@@ -16,6 +16,14 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+# CI 环境（windows-latest 默认控制台为 cp1252）下中文输出会 UnicodeEncodeError，
+# 强制 stdout/stderr 使用 UTF-8，保证脚本在任何 locale 下都能跑完。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
 ROOT = Path(__file__).resolve().parent
 errors: list[str] = []
 ok: list[str] = []
