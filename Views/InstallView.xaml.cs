@@ -15,9 +15,6 @@ namespace ScopeRecallWin.Views;
 
 public sealed partial class InstallView : UserControl
 {
-    /// <summary>部署确认语句（勾选复选框即代表本人确认，等价于手写授权句）。</summary>
-    private const string DeployConfirmSentence = "我确认在本机部署记忆插件";
-
     private readonly IPluginService? _plugin;
     private readonly ObservableCollection<string> _planSteps = new();
     private readonly ObservableCollection<string> _deployLog = new();
@@ -231,9 +228,13 @@ public sealed partial class InstallView : UserControl
                 SetDeployState("请先选择部署目录。", "failed");
                 return;
             }
-            if (ChkConfirm.IsChecked != true)
+            if (!await Confirm.AskAsync(
+                    this,
+                    "开始部署记忆插件",
+                    "将在所选目录创建记忆库与插件运行环境；若该目录已有记忆库，则只做校验与权限检查（不重装）。",
+                    "全新部署约占用 1.5 GB 磁盘、需要几分钟；请确认目标目录空间充足，且当前没有正在进行的记忆写入。",
+                    "开始部署"))
             {
-                SetDeployState("请先勾选确认框：需要你本人确认本次部署。", "pending");
                 return;
             }
 
@@ -249,7 +250,7 @@ public sealed partial class InstallView : UserControl
                 DeployLogList.ScrollIntoView(_deployLog[^1]);
             });
 
-            var result = await _plugin.ApplyInstallAsync(root, DeployConfirmSentence, progress);
+            var result = await _plugin.ApplyInstallAsync(root, "二次确认", progress);
 
             if (result.Success)
             {

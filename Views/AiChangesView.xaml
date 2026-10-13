@@ -33,14 +33,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <ComboBox Grid.Column="0" x:Name="CmbState" Width="200" SelectedIndex="0">
-                    <ComboBoxItem Content="全部状态" />
-                    <ComboBoxItem Content="waiting_evidence" />
-                    <ComboBoxItem Content="pending_evaluation" />
-                    <ComboBoxItem Content="resolved" />
-                    <ComboBoxItem Content="archived" />
-                    <ComboBoxItem Content="dormant" />
-                </ComboBox>
+                <controls:FilterPicker Grid.Column="0" x:Name="PickerState" ButtonMinWidth="200" />
                 <Button Grid.Column="1" x:Name="BtnApply" Content="筛选" Click="BtnApply_Click" />
             </Grid>
 

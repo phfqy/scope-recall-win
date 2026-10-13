@@ -13,13 +13,217 @@ namespace ScopeRecallWin.Views;
 
 public sealed partial class OpsView : UserControl
 {
+    /// <summary>备份文件列表项。</summary>
+    private sealed record BackupFile(string Path, string Name, string Meta);
+
     private readonly IPluginService? _plugin;
+    private List<BackupFile> _backups = new();
+    private string? _selectedBackup;
 
     public OpsView()
     {
         InitializeComponent();
         _plugin = ServiceLocator.Get<IPluginService>();
+        Loaded += (_, _) =>
+        {
+            UiThread.Run(DispatcherQueue, "OpsView.LoadBackups", RefreshBackupsAsync);
+            UiThread.Run(DispatcherQueue, "OpsView.LoadEntries", RefreshEntriesAsync);
+        };
     }
+
+    // ---------- 从备份恢复 ----------
+
+    /// <summary>备份目录：共享库根目录下的 _upgrade-console\backups。</summary>
+    private static string? BackupDirOf(string root) => Path.Combine(root, PluginService.WorkDirName, "backups");
+
+    private async Task RefreshBackupsAsync()
+    {
+        var root = PathDiscovery.FindMemoryRoot(App.Settings);
+        var list = new List<BackupFile>();
+        if (root is not null)
+        {
+            var dir = BackupDirOf(root);
+            try
+            {
+                if (Directory.Exists(dir))
+                {
+                    foreach (var file in Directory.EnumerateFiles(dir, "*.sqlite3")
+                                 .OrderByDescending(File.GetLastWriteTime))
+                    {
+                        var info = new FileInfo(file);
+                        list.Add(new BackupFile(
+                            file,
+                            info.Name,
+                            $"大小 {Exporter.HumanSize(info.Length)} · 备份于 {info.LastWriteTime:yyyy-MM-dd HH:mm}"));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                App.LogCrash("OpsView.RefreshBackups", ex);
+            }
+        }
+
+        _backups = list;
+        BackupList.ItemsSource = _backups;
+        TxtRestoreState.Text = _backups.Count == 0
+            ? "备份文件夹里还没有备份文件；可先「立即备份」，或点「选择其他文件…」指定已有备份。"
+            : $"共 {_backups.Count} 份备份，点击列表选择要恢复的那一份。";
+        TxtRestoreState.Foreground = StatusVisuals.BrushOf(_backups.Count == 0 ? "pending" : "ok");
+        await Task.CompletedTask;
+    }
+
+    private void BackupList_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is BackupFile file)
+        {
+            _selectedBackup = file.Path;
+            TxtRestoreState.Text = $"已选择备份：{file.Name}（{file.Meta}）";
+            TxtRestoreState.Foreground = StatusVisuals.BrushOf("pending");
+        }
+    }
+
+    private void BtnRefreshBackups_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "OpsView.BtnRefreshBackups_Click", RefreshBackupsAsync);
+
+    private void BtnOpenBackupDir_Click(object sender, RoutedEventArgs e)
+    {
+        var root = PathDiscovery.FindMemoryRoot(App.Settings);
+        if (root is null)
+        {
+            TxtBackupState.Text = "未找到记忆库根目录。";
+            return;
+        }
+        var dir = BackupDirOf(root)!;
+        Directory.CreateDirectory(dir);
+        OpenInExplorer(dir);
+    }
+
+    private void BtnPickBackup_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "OpsView.BtnPickBackup_Click", async () =>
+        {
+            try
+            {
+                var picker = new Windows.Storage.Pickers.FileOpenPicker();
+                picker.FileTypeFilter.Add(".sqlite3");
+                picker.FileTypeFilter.Add(".db");
+                if (App.MainWindow is not null)
+                {
+                    var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+                    WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+                }
+                var file = await picker.PickSingleFileAsync();
+                if (file is not null)
+                {
+                    _selectedBackup = file.Path;
+                    TxtRestoreState.Text = $"已选择备份：{file.Name}";
+                    TxtRestoreState.Foreground = StatusVisuals.BrushOf("pending");
+                }
+            }
+            catch (Exception ex)
+            {
+                App.LogCrash("OpsView.PickBackup", ex);
+                TxtRestoreState.Text = $"文件选择器不可用：{ex.Message}";
+                TxtRestoreState.Foreground = StatusVisuals.BrushOf("failed");
+            }
+        });
+
+    private void BtnRestore_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "OpsView.BtnRestore_Click", async () =>
+        {
+            var env = ResolveEnv();
+            if (env is null)
+            {
+                TxtRestoreState.Text = "未找到记忆库根目录或共享运行环境。";
+                TxtRestoreState.Foreground = StatusVisuals.BrushOf("failed");
+                return;
+            }
+            if (_selectedBackup is null || !File.Exists(_selectedBackup))
+            {
+                TxtRestoreState.Text = "请先在列表中选择一份备份（或点「选择其他文件…」）。";
+                TxtRestoreState.Foreground = StatusVisuals.BrushOf("pending");
+                return;
+            }
+
+            var snapshotName = Path.GetFileName(_selectedBackup);
+            if (!await Confirm.AskAsync(
+                    this,
+                    "从备份恢复记忆库",
+                    $"将把记忆库恢复为备份「{snapshotName}」的状态。恢复前会自动为当前记忆库再做一次备份，因此随时可以恢复到现在的状态。",
+                    "恢复后，这份备份之后新增或修改的记忆会被覆盖（包括所有已接入助手的记忆）。",
+                    "确认恢复"))
+            {
+                return;
+            }
+
+            // 1) 恢复前自动备份当前库
+            TxtRestoreState.Text = "正在为当前记忆库做恢复前备份…";
+            TxtRestoreState.Foreground = StatusVisuals.BrushOf("pending");
+            var preDir = BackupDirOf(env.Value.Root)!;
+            Directory.CreateDirectory(preDir);
+            var preBackup = Path.Combine(preDir, $"memory-before-restore-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.sqlite3");
+            var pre = await ProcessRunner.RunAsync(
+                env.Value.VenvPython,
+                $"-m scope_recall.maintenance.cli backup --database \"{env.Value.Db}\" --output \"{preBackup}\"",
+                timeoutMs: 600_000);
+            if (!pre.Success || !File.Exists(preBackup))
+            {
+                TxtRestoreState.Text = $"恢复中止：恢复前备份失败（{FirstLine(pre.StdErr) ?? "未知原因"}）。记忆库未被改动。";
+                TxtRestoreState.Foreground = StatusVisuals.BrushOf("failed");
+                return;
+            }
+
+            // 2) 校验备份文件（不带 --apply 为预演）
+            TxtRestoreState.Text = "正在校验备份文件…";
+            var dry = await ProcessRunner.RunAsync(
+                env.Value.VenvPython,
+                $"-m scope_recall.maintenance.cli rollback --current-db \"{env.Value.Db}\" --snapshot \"{_selectedBackup}\"",
+                timeoutMs: 600_000);
+            if (!dry.Success)
+            {
+                TxtRestoreState.Text = $"恢复中止：备份文件校验未通过（{FirstLine(dry.StdErr) ?? FirstLine(dry.StdOut) ?? "未知原因"}）。记忆库未被改动。";
+                TxtRestoreState.Foreground = StatusVisuals.BrushOf("failed");
+                return;
+            }
+
+            // 3) 执行恢复
+            TxtRestoreState.Text = "正在恢复…";
+            var apply = await ProcessRunner.RunAsync(
+                env.Value.VenvPython,
+                $"-m scope_recall.maintenance.cli rollback --current-db \"{env.Value.Db}\" --snapshot \"{_selectedBackup}\" --apply",
+                timeoutMs: 900_000);
+
+            if (apply.Success)
+            {
+                TxtRestoreState.Text = $"✓ 已恢复为备份「{snapshotName}」的状态。恢复前的记忆已另存为：{Path.GetFileName(preBackup)}";
+                TxtRestoreState.Foreground = StatusVisuals.BrushOf("ok");
+                await RefreshBackupsAsync();
+            }
+            else
+            {
+                TxtRestoreState.Text = $"✗ 恢复失败（退出码 {apply.ExitCode}）：{FirstLine(apply.StdErr) ?? FirstLine(apply.StdOut) ?? "未知原因"}。" +
+                                       $"恢复前的备份仍保留在：{Path.GetFileName(preBackup)}";
+                TxtRestoreState.Foreground = StatusVisuals.BrushOf("failed");
+            }
+        });
+
+    /// <summary>用资源管理器打开目录（失败时静默记录）。</summary>
+    private static void OpenInExplorer(string path)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path)
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash("OpsView.OpenInExplorer", ex);
+        }
+    }
+
+
 
     private (string Root, string VenvPython, string Db)? ResolveEnv()
     {
@@ -40,24 +244,25 @@ public sealed partial class OpsView : UserControl
     // ---------- entries ----------
 
     private void BtnRefreshEntries_Click(object sender, RoutedEventArgs e)
-    {
-        UiThread.Run(DispatcherQueue, "OpsView.BtnRefreshEntries_Click", async () =>
-        {
-            var root = PathDiscovery.FindMemoryRoot(App.Settings);
-            if (root is null || _plugin is null)
-            {
-                TxtEntriesState.Text = "未找到记忆库根目录。";
-                return;
-            }
-            var entries = (await _plugin.ListEntriesAsync(root)).ToList();
-            EntryList.ItemsSource = entries.Select(en => new
-            {
-                Title = $"{en.Entry} — host {en.Host}",
-                Meta = $"host {en.Host} · home {en.Home} · 目录存在 {(en.Alive ? "是" : "否")}",
-            }).ToList();
-            TxtEntriesState.Text = $"共 {entries.Count} 个 entry。";
+        => UiThread.Run(DispatcherQueue, "OpsView.BtnRefreshEntries_Click", RefreshEntriesAsync);
 
-        });
+    private async Task RefreshEntriesAsync()
+    {
+        var root = PathDiscovery.FindMemoryRoot(App.Settings);
+        if (root is null || _plugin is null)
+        {
+            TxtEntriesState.Text = "未找到记忆库根目录。";
+            return;
+        }
+        var entries = (await _plugin.ListEntriesAsync(root)).ToList();
+        EntryList.ItemsSource = entries.Select(en => new
+        {
+            Title = string.IsNullOrWhiteSpace(en.DisplayName) ? en.Entry : $"{en.DisplayName}（{en.Entry}）",
+            Meta = $"类型 {en.Host} · 数据目录 {en.Home} · 常驻服务 {(en.Alive ? "运行中" : "未运行")}",
+        }).ToList();
+        TxtEntriesState.Text = entries.Count == 0
+            ? "这个共享库还没有接入任何助手。"
+            : $"共 {entries.Count} 个助手已接入。";
     }
 
     // ---------- 备份 ----------
@@ -78,12 +283,12 @@ public sealed partial class OpsView : UserControl
                 return;
             }
 
-            var (confirmed, _) = await ConfirmAsync(
-                "备份记忆库",
-                "将调用官方 backup CLI 生成一致性快照（quick_check + sha256 回执）。\n" +
-                "备份文件写入 <root>\\_upgrade-console\\backups\\。该操作只读源库、只写备份文件。",
-                "backup");
-            if (!confirmed)
+            if (!await Confirm.AskAsync(
+                    this,
+                    "备份记忆库",
+                    "将生成一份当前记忆库的一致性快照（含完整性校验与校验值），备份文件保存到备份文件夹。",
+                    null,
+                    "开始备份"))
             {
                 return;
             }
@@ -129,12 +334,12 @@ public sealed partial class OpsView : UserControl
                 return;
             }
 
-            var (confirmed, _) = await ConfirmAsync(
-                $"执行 {command}",
-                $"将调用官方 CLI：scope_recall.maintenance.cli {command}。\n" +
-                "该操作处理有界页面并写入记忆库，请确认你本人了解本次操作。",
-                command);
-            if (!confirmed)
+            if (!await Confirm.AskAsync(
+                    this,
+                    MaintenanceTitle(command),
+                    MaintenanceMessage(command),
+                    "该操作会写入记忆库；请尽量在无人使用记忆库时执行，执行前建议先做一次备份。",
+                    "确认执行"))
             {
                 return;
             }
@@ -154,39 +359,25 @@ public sealed partial class OpsView : UserControl
 
     // ---------- 对话框 ----------
 
-    private async Task<(bool Confirmed, string Auth)> ConfirmAsync(string title, string message, string verb)
+    /// <summary>维护操作的中文标题。</summary>
+    private static string MaintenanceTitle(string command) => command switch
     {
-        var box = new TextBox { PlaceholderText = $"授权句（本人书写，≥6 字）。例：我确认对记忆库执行 {verb}" };
-        var dialog = new ContentDialog
-        {
-            Title = title,
-            Content = new StackPanel
-            {
-                Spacing = 10,
-                Children =
-                {
-                    new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, FontSize = 12.5 },
-                    box,
-                },
-            },
-            PrimaryButtonText = "确认执行",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
-        };
-        var result = await dialog.ShowAsync();
-        if (result != ContentDialogResult.Primary)
-        {
-            return (false, "");
-        }
-        var auth = (box.Text ?? "").Trim();
-        if (auth.Length < 6)
-        {
-            TxtBackupState.Text = "授权句不足 6 字，操作已取消。";
-            return (false, "");
-        }
-        return (true, auth);
-    }
+        "requalify" => "重新判定候选记忆",
+        "respace-embeddings" => "重建向量索引",
+        "retry-failures" => "重试失败任务",
+        "upgrade-store" => "升级记忆库结构",
+        _ => "执行维护操作",
+    };
+
+    /// <summary>维护操作的中文说明。</summary>
+    private static string MaintenanceMessage(string command) => command switch
+    {
+        "requalify" => "将重新评估所有待确认的候选记忆，符合条件者转为正式记忆，不符合者继续等待或归档。",
+        "respace-embeddings" => "将按当前模型重新计算全部记忆的向量（耗时与记忆条数相关，期间语义检索可能不完整）。",
+        "retry-failures" => "将把失败的后台任务重新放回队列，按原参数再处理一次。",
+        "upgrade-store" => "将把记忆库的数据结构升级到当前版本（升级前会自动备份）。",
+        _ => $"将执行维护操作：{command}。",
+    };
 
     private static string? FirstLine(string text)
     {

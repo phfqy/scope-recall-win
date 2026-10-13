@@ -9,7 +9,7 @@
 
             <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="更新" />
             <TextBlock Style="{StaticResource PageDescTextStyle}"
-                       Text="控制台软件与记忆插件的版本管理。升级前自动备份，哈希不过即中止，不碰记忆库数据。" />
+                       Text="管理控制台软件与记忆插件的版本。升级前会自动备份，校验不过就中止，不会破坏已有记忆。" />
 
             <!-- ============ 控制台软件更新 ============ -->
             <Border Style="{StaticResource CardBorderStyle}">
@@ -84,15 +84,19 @@
 
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="BtnPluginCheck" Content="检查插件版本" Click="BtnPluginCheck_Click" />
+                        <Button x:Name="BtnOpenPluginRepo" Content="打开项目主页"
+                                Click="BtnOpenPluginRepo_Click" />
+                        <Button x:Name="BtnOpenPluginPypi" Content="PyPI 发布页"
+                                Click="BtnOpenPluginPypi_Click" />
                     </StackPanel>
 
                     <TextBlock x:Name="TxtPluginState" Style="{StaticResource PageDescTextStyle}"
-                               Text="点击「检查插件版本」获取上游最新版与各通道延迟。" TextWrapping="Wrap" />
+                               Text="点击「检查插件版本」获取上游最新版与各下载通道的延迟。" TextWrapping="Wrap" />
 
-                    <!-- 升级执行区（授权句 + 确认 + 六步进度）随功能迭代填充 -->
+                    <!-- 升级执行区（二次确认 + 六步进度） -->
                     <StackPanel x:Name="PluginUpgradePanel" Spacing="10" Visibility="Collapsed">
-                        <TextBox x:Name="TxtPluginAuth" PlaceholderText="授权句（本人书写，≥6 字，必填）" />
-                        <CheckBox x:Name="ChkPluginConfirm" Content="我已了解升级将暂停 resident 服务并替换插件文件" />
+                        <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                                   Text="升级前会自动备份记忆库；过程中会暂停记忆写入（常驻服务），完成后自动校验版本。" />
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button x:Name="BtnPluginUpgrade" Content="开始升级插件"
                                     Style="{StaticResource DangerButtonStyle}"

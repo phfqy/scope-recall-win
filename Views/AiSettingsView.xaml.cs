@@ -23,9 +23,6 @@ public sealed partial class AiSettingsView : UserControl
         "https://api.openai.com/v1/embeddings", "text-embedding-3-small", 1536, "OPENAI_API_KEY",
         "https://api.openai.com/v1/chat/completions", "gpt-4o-mini", 4096);
 
-    /// <summary>简单模式的确认语句（勾选复选框即代表本人确认，等价于手写授权句）。</summary>
-    private const string SimpleConfirmSentence = "我确认修改本机记忆库的模型配置";
-
     private readonly IModelConfigService? _models;
     private ModelConfig? _current;
     private bool _loading;
@@ -34,6 +31,11 @@ public sealed partial class AiSettingsView : UserControl
     {
         InitializeComponent();
         _models = ServiceLocator.Get<IModelConfigService>();
+        PickerProvider.SetItems(
+            new[] { "智谱 AI（推荐，本机当前使用）", "OpenAI（或兼容接口）", "自定义（手动填写接口地址）" },
+            selectedIndex: 0,
+            tags: new[] { "zhipu", "openai", "custom" });
+        PickerProvider.SelectionChanged += (_, _) => ApplyProviderPreset();
         Loaded += (_, _) => UiThread.Run(DispatcherQueue, "AiSettingsView.Loaded", LoadAsync);
     }
 
@@ -78,14 +80,7 @@ public sealed partial class AiSettingsView : UserControl
 
         // 简单模式：服务商推断 + 模型名
         var provider = InferProvider(_current.EmbeddingEndpoint);
-        foreach (var item in CmbProvider.Items)
-        {
-            if (item is ComboBoxItem { Tag: string tag } && tag == provider)
-            {
-                CmbProvider.SelectedItem = item;
-                break;
-            }
-        }
+        PickerProvider.SelectByTag(provider);
         TxtSimpleModel.Text = _current.EmbeddingModel;
         UpdateEndpointInfo(provider);
 
@@ -135,13 +130,14 @@ public sealed partial class AiSettingsView : UserControl
 
     // ---------- 简单模式 ----------
 
-    private void CmbProvider_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    /// <summary>选择服务商后自动填好接口地址与常用参数。</summary>
+    private void ApplyProviderPreset()
     {
-        if (_loading || CmbProvider.SelectedItem is not ComboBoxItem { Tag: string tag })
+        if (_loading)
         {
             return;
         }
-
+        var tag = PickerProvider.SelectedTag ?? "custom";
         var preset = tag switch { "zhipu" => Zhipu, "openai" => OpenAi, _ => null };
         if (preset is not null)
         {
@@ -187,10 +183,12 @@ public sealed partial class AiSettingsView : UserControl
                 TxtSimpleResult.Text = "未读取到现有配置，无法保存。";
                 return;
             }
-            if (ChkSimpleConfirm.IsChecked != true)
+            if (!await Confirm.AskAsync(
+                    this,
+                    "保存模型配置",
+                    "将把当前填写的服务商、模型与接口地址写入记忆配置，并保存 API Key。",
+                    "保存前会自动备份原配置文件；若填写的接口或密钥有误，记忆的向量化与整合会失败。"))
             {
-                TxtSimpleResult.Text = "请先勾选确认框：需要你本人确认本次修改。";
-                TxtSimpleResult.Foreground = StatusVisuals.BrushOf("pending");
                 return;
             }
 
@@ -230,7 +228,7 @@ public sealed partial class AiSettingsView : UserControl
                 MaxOutputTokens = int.TryParse((TxtMaxOutputTokens.Text ?? "").Trim(), out var mt) ? mt : _current.MaxOutputTokens,
             };
 
-            var save = await _models.SaveAsync(updated, SimpleConfirmSentence);
+            var save = await _models.SaveAsync(updated);
             if (!save.Ok)
             {
                 TxtSimpleResult.Text = $"保存失败：{save.Error}（原配置未被修改）";
@@ -282,11 +280,12 @@ public sealed partial class AiSettingsView : UserControl
                 maxTokens = parsed;
             }
 
-            var auth = (TxtAuthorization.Text ?? "").Trim();
-            if (auth.Length < 6)
+            if (!await Confirm.AskAsync(
+                    this,
+                    "保存高级配置",
+                    "将写入嵌入模型、整合模型与检索阈值等技术参数。",
+                    "参数错误会导致记忆向量化或整合失败；保存前会自动备份原配置。"))
             {
-                TxtSaveState.Text = "确认语句不足 6 字：请用一句话确认你本人了解本次修改。";
-                TxtSaveState.Foreground = StatusVisuals.BrushOf("failed");
                 return;
             }
 
@@ -306,7 +305,7 @@ public sealed partial class AiSettingsView : UserControl
             };
 
             TxtSaveState.Text = "正在保存（含自动备份）…";
-            var result = await _models.SaveAsync(updated, auth);
+            var result = await _models.SaveAsync(updated);
             if (result.Ok)
             {
                 TxtSaveState.Text = $"✓ 已保存。原配置备份：{result.BackupPath ?? "（未生成）"}";

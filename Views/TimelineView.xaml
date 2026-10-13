@@ -20,7 +20,7 @@
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="时间线" Style="{StaticResource PageTitleTextStyle}" />
                     <TextBlock Style="{StaticResource PageDescTextStyle}"
-                               Text="session / episode / capture 事件流。时间戳已归一（+00:00 微秒与 Z 两种格式解析后排序）。" />
+                               Text="按时间倒序列出记忆库收到的每一条原始记录。「角色」表示这条内容由谁产生：用户＝你输入的话，助手＝AI 的回复，工具＝工具调用与结果。" />
                 </StackPanel>
                 <Button Grid.Column="1" x:Name="BtnRefresh" Content="刷新" Click="BtnRefresh_Click"
                         VerticalAlignment="Center" />
@@ -33,17 +33,10 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <ComboBox Grid.Column="0" x:Name="CmbRole" Width="120" SelectedIndex="0">
-                    <ComboBoxItem Content="全部角色" />
-                    <ComboBoxItem Content="user" />
-                    <ComboBoxItem Content="assistant" />
-                    <ComboBoxItem Content="tool" />
-                </ComboBox>
-                <ComboBox Grid.Column="1" x:Name="CmbRange" Width="120" SelectedIndex="0">
-                    <ComboBoxItem Content="最近 500 条" />
-                    <ComboBoxItem Content="最近 2000 条" />
-                    <ComboBoxItem Content="全部" />
-                </ComboBox>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                    <controls:FilterPicker x:Name="PickerRole" ButtonMinWidth="130" />
+                    <controls:FilterPicker x:Name="PickerRange" ButtonMinWidth="130" />
+                </StackPanel>
                 <TextBox Grid.Column="2" x:Name="TxtSearch" PlaceholderText="搜索事件内容" />
                 <Button Grid.Column="3" x:Name="BtnApply" Content="应用" Click="BtnApply_Click" />
             </Grid>

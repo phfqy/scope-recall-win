@@ -33,20 +33,10 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <ComboBox Grid.Column="0" x:Name="CmbState" Width="130" SelectedIndex="0">
-                    <ComboBoxItem Content="全部状态" />
-                    <ComboBoxItem Content="failed" />
-                    <ComboBoxItem Content="pending" />
-                    <ComboBoxItem Content="done" />
-                    <ComboBoxItem Content="obsolete" />
-                </ComboBox>
-                <ComboBox Grid.Column="1" x:Name="CmbType" Width="170" SelectedIndex="0">
-                    <ComboBoxItem Content="全部类型" />
-                    <ComboBoxItem Content="embed" />
-                    <ComboBoxItem Content="consolidate" />
-                    <ComboBoxItem Content="evaluate_candidate" />
-                    <ComboBoxItem Content="rebuild_projection" />
-                </ComboBox>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                    <controls:FilterPicker x:Name="PickerState" ButtonMinWidth="140" />
+                    <controls:FilterPicker x:Name="PickerType" ButtonMinWidth="160" />
+                </StackPanel>
                 <Button Grid.Column="2" x:Name="BtnApply" Content="筛选" Click="BtnApply_Click"
                         HorizontalAlignment="Left" />
             </Grid>

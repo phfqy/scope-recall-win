@@ -1,7 +1,8 @@
 <UserControl
     x:Class="ScopeRecallWin.Views.SharedStoreView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
 
     <ScrollViewer>
         <StackPanel Padding="26" Spacing="14" MaxWidth="900">
@@ -56,15 +57,8 @@
                     <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
                                Text="把一个 AI 助手接进共享库。接入时它原有的记忆会并入共享库（原库会自动备份），之后它的新记忆也写进共享库。" />
 
-                    <ComboBox x:Name="CmbHost" Header="该助手属于哪一类（宿主类型）"
-                              HorizontalAlignment="Stretch" SelectionChanged="CmbHost_SelectionChanged">
-                        <ComboBoxItem Content="WorkBuddy（本机 .workbuddy）" Tag="workbuddy" />
-                        <ComboBoxItem Content="WorkBuddy AI（本机 .workbuddy-ai）" Tag="workbuddy-ai" />
-                        <ComboBoxItem Content="DeepSeek Harness （DSH）" Tag="dsh" />
-                        <ComboBoxItem Content="Hermes" Tag="hermes" />
-                        <ComboBoxItem Content="Codex" Tag="codex" />
-                        <ComboBoxItem Content="Claude Code" Tag="claude-code" />
-                    </ComboBox>
+                    <controls:FilterPicker x:Name="PickerHost" Header="该助手属于哪一类（宿主类型）"
+                                           ButtonMinWidth="260" />
 
                     <TextBox x:Name="TxtEntryId" Header="成员标识（2~32 位小写字母/数字/连字符，用于内部区分）"
                              PlaceholderText="例如 workbuddy" />
@@ -74,9 +68,6 @@
                              PlaceholderText="例如 C:\Users\ma314\.workbuddy" />
 
                     <TextBlock x:Name="TxtAttachHint" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
-
-                    <CheckBox x:Name="ChkAttachConfirm"
-                              Content="我确认把该助手接入共享库（其原有记忆将并入共享库，原库自动备份）" />
 
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="BtnAttach" Content="接入共享库"

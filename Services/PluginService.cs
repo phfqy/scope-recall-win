@@ -461,11 +461,8 @@ public sealed class PluginService : IPluginService
         {
             return new PluginUpgradeResult(false, null, null, log, "未确认：请勾选确认框（confirm=true）。");
         }
-        if (string.IsNullOrWhiteSpace(request.Authorization) || request.Authorization.Trim().Length < 6)
-        {
-            return new PluginUpgradeResult(false, null, null, log,
-                "授权句不足 6 字：请用一句话确认你本人了解本次升级（将暂停 resident 服务并替换插件文件）。");
-        }
+        // 说明：授权句要求已取消，改为界面二次确认（request.Confirm）；
+        // PluginUpgradeRequest.Authorization 字段保留以兼容既有调用，不再参与校验。
 
         var root = request.Root;
         var venvPython = PathDiscovery.FindVenvPython(root);

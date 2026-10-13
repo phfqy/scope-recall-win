@@ -26,6 +26,14 @@ public sealed partial class QueueView : UserControl
         InitializeComponent();
         _storage = ServiceLocator.Get<IStorageService>();
         Table.RowTapped += Table_RowTapped;
+        PickerState.SetItems(
+            new[] { "全部状态", "失败", "待处理", "已完成", "已废弃" },
+            selectedIndex: 0,
+            tags: new[] { "all", "failed", "pending", "done", "obsolete" });
+        PickerType.SetItems(
+            new[] { "全部类型", "向量化", "记忆整合", "候选评估", "重建索引" },
+            selectedIndex: 0,
+            tags: new[] { "all", "embed", "consolidate", "evaluate_candidate", "rebuild_projection" });
         Loaded += QueueView_Loaded;
     }
 
@@ -64,16 +72,8 @@ public sealed partial class QueueView : UserControl
             return;
         }
 
-        var state = ((ComboBoxItem)CmbState.SelectedItem)?.Content?.ToString();
-        if (state == "全部状态")
-        {
-            state = "all";
-        }
-        var type = ((ComboBoxItem)CmbType.SelectedItem)?.Content?.ToString();
-        if (type == "全部类型")
-        {
-            type = "all";
-        }
+        var state = PickerState.SelectedTag ?? "all";
+        var type = PickerType.SelectedTag ?? "all";
 
         var (rows, total) = await _storage.GetWorkItemsAsync(_dbPath, state, type, 500);
         _rows = rows.ToList();
@@ -229,30 +229,29 @@ public sealed partial class QueueView : UserControl
                 return;
             }
 
-            // 授权句 + 确认（红字二次确认）
-            var (confirmed, auth) = await ConfirmAsync(
-                "重试失败任务",
-                "将调用官方 CLI 对失败任务授予一次重新处理机会（retry-failures，有界页面）。\n" +
-                "该操作会写入记忆库队列，请确认你本人了解本次操作。",
-                "retry-failures");
-            if (!confirmed)
+            if (!await Confirm.AskAsync(
+                    this,
+                    "重试失败的后台任务",
+                    "将把失败的任务重新放回队列，按原参数再处理一次（分批执行，不会一次跑完全部积压）。",
+                    "重试会写入记忆库；若失败原因尚未消除（例如密钥失效、网络受限），任务可能再次失败。",
+                    "确认重试"))
             {
                 return;
             }
 
-            TxtTotal.Text = "正在执行 retry-failures…";
+            TxtTotal.Text = "正在重试失败任务…";
             var result = await ProcessRunner.RunAsync(
                 venvPython,
                 "-m scope_recall.maintenance.cli retry-failures",
                 timeoutMs: 300_000);
             if (result.Success)
             {
-                TxtTotal.Text = $"retry-failures 完成（exit 0）。{(result.StdOut.Length > 200 ? result.StdOut[..200] + "…" : result.StdOut)}";
+                TxtTotal.Text = $"已重试：失败任务已重新入队处理。{(result.StdOut.Length > 200 ? result.StdOut[..200] + "…" : result.StdOut)}";
                 await ReloadAsync();
             }
             else
             {
-                await ShowInfoAsync($"retry-failures 失败（exit {result.ExitCode}）：\n{FirstLine(result.StdErr) ?? result.StdOut}");
+                await ShowInfoAsync($"重试失败（退出码 {result.ExitCode}）：\n{FirstLine(result.StdErr) ?? result.StdOut}");
             }
 
         });
@@ -266,41 +265,6 @@ public sealed partial class QueueView : UserControl
         }
         var line = text.Split('\n')[0].Trim();
         return line.Length == 0 ? null : line;
-    }
-
-    /// <summary>授权句 + 确认对话框；返回 (是否确认, 授权句)。</summary>
-    private async Task<(bool Confirmed, string Auth)> ConfirmAsync(string title, string message, string actionVerb)
-    {
-        var box = new TextBox { PlaceholderText = $"授权句（本人书写，≥6 字）。例：我确认对记忆库执行 {actionVerb}" };
-        var dialog = new ContentDialog
-        {
-            Title = title,
-            Content = new StackPanel
-            {
-                Spacing = 10,
-                Children =
-                {
-                    new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, FontSize = 12.5 },
-                    box,
-                },
-            },
-            PrimaryButtonText = "确认执行",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
-        };
-        var result = await dialog.ShowAsync();
-        if (result != ContentDialogResult.Primary)
-        {
-            return (false, "");
-        }
-        var auth = (box.Text ?? "").Trim();
-        if (auth.Length < 6)
-        {
-            await ShowInfoAsync("授权句不足 6 字，操作已取消。");
-            return (false, "");
-        }
-        return (true, auth);
     }
 
     private async Task ShowInfoAsync(string message)

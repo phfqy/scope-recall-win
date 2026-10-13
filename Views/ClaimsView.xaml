@@ -36,14 +36,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <ComboBox Grid.Column="0" x:Name="CmbStatus" Width="130" SelectedIndex="0">
-                    <ComboBoxItem Content="全部状态" />
-                    <ComboBoxItem Content="active" />
-                    <ComboBoxItem Content="proposed" />
-                    <ComboBoxItem Content="disputed" />
-                    <ComboBoxItem Content="superseded" />
-                    <ComboBoxItem Content="retracted" />
-                </ComboBox>
+                <controls:FilterPicker Grid.Column="0" x:Name="PickerStatus" ButtonMinWidth="140" />
                 <Button Grid.Column="1" x:Name="BtnFilter" Content="筛选" Click="BtnFilter_Click" />
                 <TextBox Grid.Column="2" x:Name="TxtSearch" PlaceholderText="搜索 subject / predicate / claim_id" />
                 <Button Grid.Column="3" x:Name="BtnSearch" Content="搜索" Click="BtnSearch_Click" />

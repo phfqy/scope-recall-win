@@ -2,7 +2,7 @@
     x:Class="ScopeRecallWin.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="范围检索 · Scope Recall">
+    Title="Scope Recall 记忆工作台">
 
     <!-- 布局：236px 左导航 + 内容区 + ⌘K 命令面板浮层。
          导航用 Grid/StackPanel/Button 自建，而非 NavigationView ——
@@ -27,7 +27,7 @@
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0"
-                       Text="范围检索 · Scope Recall"
+                       Text="Scope Recall 记忆工作台"
                        Style="{StaticResource NavGroupHeaderStyle}"
                        Margin="10,2,10,10"
                        TextWrapping="Wrap" />
@@ -38,16 +38,51 @@
         </Grid>
 
         <!-- 页面容器：ContentControl 承载 18 个视图（Frame 在 unpackaged 下同样会崩） -->
-        <ContentControl x:Name="ContentHost"
-                        Grid.Column="1"
-                        HorizontalContentAlignment="Stretch"
-                        VerticalContentAlignment="Stretch">
-            <ContentControl.ContentTransitions>
-                <TransitionCollection>
-                    <EntranceThemeTransition FromHorizontalOffset="24" />
-                </TransitionCollection>
-            </ContentControl.ContentTransitions>
-        </ContentControl>
+        <!-- 内容区：顶栏全局搜索 + 视图宿主 -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- 全局检索入口：搜索范围是本机记忆库的全部原始事件（跨所有助手与会话） -->
+            <Border Grid.Row="0" Padding="26,14,26,10" Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Grid Grid.Column="0" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0" Glyph="&#xE721;" FontSize="15"
+                                  Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
+                        <TextBox Grid.Column="1" x:Name="TxtGlobalSearch"
+                                 PlaceholderText="在全部记忆中搜索…（Enter 检索，Ctrl+F 聚焦）"
+                                 BorderThickness="0" Background="Transparent" Padding="0,6"
+                                 KeyDown="TxtGlobalSearch_KeyDown" />
+                    </Grid>
+
+                    <Button Grid.Column="1" x:Name="BtnGlobalSearch" Content="检索"
+                            Click="BtnGlobalSearch_Click" />
+                </Grid>
+            </Border>
+
+            <ContentControl x:Name="ContentHost"
+                            Grid.Row="1"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch">
+                <ContentControl.ContentTransitions>
+                    <TransitionCollection>
+                        <EntranceThemeTransition FromHorizontalOffset="24" />
+                    </TransitionCollection>
+                </ContentControl.ContentTransitions>
+            </ContentControl>
+        </Grid>
 
         <!-- ⌘K 命令面板浮层（Acrylic），Ctrl+K 唤起：输入过滤 + ↑↓ 选择 + Enter 跳转 + Esc 关闭 -->
         <Grid x:Name="PaletteOverlay" Grid.ColumnSpan="2" Visibility="Collapsed" Background="#33000000">

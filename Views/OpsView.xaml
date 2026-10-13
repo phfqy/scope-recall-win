@@ -8,7 +8,7 @@
         <StackPanel Padding="26" Spacing="14" MaxWidth="960">
             <TextBlock Text="运维" Style="{StaticResource PageTitleTextStyle}" />
             <TextBlock Style="{StaticResource PageDescTextStyle}"
-                       Text="entries 台账、记忆库备份与高级维护入口。所有写操作需授权句 + 确认，且只走官方 CLI。" />
+                       Text="备份与恢复记忆库、查看已接入的助手、执行维护操作。危险操作都会先弹确认。" />
 
             <!-- entries 台账 -->
             <Border Style="{StaticResource CardBorderStyle}">
@@ -49,10 +49,43 @@
                                Text="调用官方 backup CLI 生成一致性快照（quick_check + sha256 回执）。备份文件写入根目录 _upgrade-console\\backups\\。" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="BtnBackup" Content="立即备份"
-                                Style="{StaticResource DangerButtonStyle}" Click="BtnBackup_Click" />
+                                Style="{StaticResource AccentButtonStyle}" Click="BtnBackup_Click" />
+                        <Button x:Name="BtnOpenBackupDir" Content="打开备份文件夹"
+                                Click="BtnOpenBackupDir_Click" />
                     </StackPanel>
                     <TextBlock x:Name="TxtBackupState" Style="{StaticResource PageDescTextStyle}"
                                TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 从备份恢复 ============ -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="从备份恢复" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="选择一个备份文件，把记忆库恢复到当时的状态（恢复前会自动为当前记忆库再做一次备份）。" />
+
+                    <ListView x:Name="BackupList" MaxHeight="200" SelectionMode="Single"
+                              IsItemClickEnabled="True" ItemClick="BackupList_ItemClick">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Padding="4,6">
+                                    <TextBlock Text="{Binding Name}" FontSize="12.5" />
+                                    <TextBlock Text="{Binding Meta}" FontSize="11"
+                                               Foreground="{StaticResource MutedTextBrush}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="BtnRefreshBackups" Content="刷新列表" Click="BtnRefreshBackups_Click" />
+                        <Button x:Name="BtnPickBackup" Content="选择其他文件…" Click="BtnPickBackup_Click" />
+                        <Button x:Name="BtnRestore" Content="恢复到选中备份"
+                                Style="{StaticResource DangerButtonStyle}" Click="BtnRestore_Click" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="TxtRestoreState" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
 

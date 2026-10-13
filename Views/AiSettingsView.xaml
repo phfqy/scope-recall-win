@@ -1,7 +1,8 @@
 <UserControl
     x:Class="ScopeRecallWin.Views.AiSettingsView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
 
     <ScrollViewer>
         <StackPanel Padding="26" Spacing="14" MaxWidth="900">
@@ -26,12 +27,8 @@
                 <StackPanel Spacing="12">
                     <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="基本设置（三步完成）" />
 
-                    <ComboBox x:Name="CmbProvider" Header="第 1 步 · 选择服务商"
-                              HorizontalAlignment="Stretch" SelectionChanged="CmbProvider_SelectionChanged">
-                        <ComboBoxItem Content="智谱 AI（推荐，本机当前使用）" Tag="zhipu" />
-                        <ComboBoxItem Content="OpenAI（或兼容接口）" Tag="openai" />
-                        <ComboBoxItem Content="自定义（手动填写接口地址）" Tag="custom" />
-                    </ComboBox>
+                    <controls:FilterPicker x:Name="PickerProvider" Header="第 1 步 · 选择服务商（自动填好接口地址）"
+                                           ButtonMinWidth="300" />
 
                     <TextBox x:Name="TxtSimpleModel" Header="第 2 步 · 模型名称"
                              PlaceholderText="例如 embedding-3" />
@@ -44,9 +41,6 @@
                                  PlaceholderText="粘贴 API Key" />
 
                     <TextBlock x:Name="TxtKeyState" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
-
-                    <CheckBox x:Name="ChkSimpleConfirm"
-                              Content="我确认修改本机记忆库的模型配置（保存前会自动备份原配置）" />
 
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="BtnSimpleSave" Content="保存并测试连接"
@@ -97,8 +91,6 @@
                              HorizontalAlignment="Left" />
 
                     <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="保存高级配置" />
-                    <TextBox x:Name="TxtAuthorization" Header="确认语句（本人书写，≥6 字）"
-                             PlaceholderText="例：我确认修改本机记忆库的模型配置" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="BtnSaveAdv" Content="保存高级配置"
                                 Style="{StaticResource DangerButtonStyle}" Click="BtnSave_Click" />

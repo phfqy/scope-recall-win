@@ -26,6 +26,15 @@ public sealed partial class SettingsView : UserControl
         }
         _loaded = true;
 
+        // 外观主题
+        switch (ThemeService.Normalize(App.Settings.Theme))
+        {
+            case ThemeService.Light: RadioThemeLight.IsChecked = true; break;
+            case ThemeService.Dark: RadioThemeDark.IsChecked = true; break;
+            default: RadioThemeSystem.IsChecked = true; break;
+        }
+        RefreshThemeState();
+
         // 更新模式
         RadioAuto.IsChecked = App.Settings.UpdateMode != "notify";
         RadioNotify.IsChecked = App.Settings.UpdateMode == "notify";
@@ -41,6 +50,33 @@ public sealed partial class SettingsView : UserControl
         // 记忆库位置
         var root = PathDiscovery.FindMemoryRoot(App.Settings);
         TxtMemoryRoot.Text = root ?? "未检测到记忆库（可在「安装」页选择部署目录）";
+    }
+
+    private void Theme_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_loaded)
+        {
+            return;
+        }
+        var setting = RadioThemeLight.IsChecked == true ? ThemeService.Light
+            : RadioThemeDark.IsChecked == true ? ThemeService.Dark
+            : ThemeService.System;
+        App.Settings.Theme = setting;
+        App.Settings.Save();
+        ThemeService.Apply(setting);
+        RefreshThemeState();
+    }
+
+    private void RefreshThemeState()
+    {
+        if (TxtThemeState is null)
+        {
+            return;
+        }
+        var setting = ThemeService.Normalize(App.Settings.Theme);
+        TxtThemeState.Text = setting == ThemeService.System
+            ? $"当前：跟随系统（实际为{(ThemeService.IsDark ? "深色" : "浅色")}）。"
+            : $"当前：{ThemeService.DisplayName(setting)}。";
     }
 
     private void UpdateMode_Changed(object sender, RoutedEventArgs e)

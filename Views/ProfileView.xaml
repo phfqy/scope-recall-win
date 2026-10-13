@@ -5,8 +5,9 @@
     xmlns:controls="using:ScopeRecallWin.Controls">
 
     <Grid>
-        <Grid Padding="26" MaxWidth="900">
+        <Grid Padding="26" MaxWidth="1160">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -19,39 +20,68 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="档案" Style="{StaticResource PageTitleTextStyle}" />
-                    <TextBlock Style="{StaticResource PageDescTextStyle}"
-                               Text="按 subject 聚合的确定性分类视图：每个主题记住了多少、其中多少已转正（active）。" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="按主题归类的记忆全貌。关系图直观展示「记忆库 → 主题」的结构，点击主题可查看其下的记忆条目。" />
                 </StackPanel>
-                <Button Grid.Column="1" x:Name="BtnRefresh" Content="刷新" Click="BtnRefresh_Click"
-                        VerticalAlignment="Center" />
+                <Button Grid.Column="1" x:Name="BtnRefresh" Content="刷新" VerticalAlignment="Center"
+                        Click="BtnRefresh_Click" />
             </Grid>
 
-            <TextBlock Grid.Row="1" x:Name="TxtTotal" Style="{StaticResource PageDescTextStyle}" Margin="0,12,0,6" />
+            <!-- 工具行：视图 / 关系图形态 / 排序 -->
+            <Grid Grid.Row="1" Margin="0,12,0,8" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
-            <ListView Grid.Row="2" x:Name="GroupList" SelectionMode="None" IsItemClickEnabled="True"
-                      ItemClick="GroupList_ItemClick">
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <Border Style="{StaticResource CardBorderStyle}" Margin="0,4">
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding Subject}" FontSize="13.5"
-                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="1" Text="{Binding CountText}" FontSize="12"
-                                           Foreground="{StaticResource MutedTextBrush}"
-                                           VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="2" Text="{Binding NewestText}" FontSize="11"
-                                           Foreground="{StaticResource MutedTextBrush}"
-                                           VerticalAlignment="Center" />
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
+                <controls:FilterPicker Grid.Column="0" x:Name="PickerView" ButtonMinWidth="130" />
+                <controls:FilterPicker Grid.Column="1" x:Name="PickerGraphKind" ButtonMinWidth="140" />
+                <controls:FilterPicker Grid.Column="2" x:Name="PickerSort" ButtonMinWidth="150" />
+                <Button Grid.Column="3" x:Name="BtnZoomOut" Content="缩小" Click="BtnZoomOut_Click" />
+                <Button Grid.Column="4" x:Name="BtnZoomIn" Content="放大" Click="BtnZoomIn_Click"
+                        HorizontalAlignment="Left" />
+            </Grid>
+
+            <TextBlock Grid.Row="2" x:Name="TxtTotal" Style="{StaticResource PageDescTextStyle}"
+                       Margin="0,0,0,8" TextWrapping="Wrap" />
+
+            <!-- 内容区：关系图 / 列表 -->
+            <Grid Grid.Row="3">
+                <Border x:Name="GraphHost" Style="{StaticResource CardBorderStyle}" Padding="0">
+                    <ScrollViewer x:Name="GraphScroll" HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Auto">
+                        <Canvas x:Name="GraphCanvas" Width="1100" Height="640" />
+                    </ScrollViewer>
+                </Border>
+
+                <ListView x:Name="GroupList" SelectionMode="None" IsItemClickEnabled="True"
+                          ItemClick="GroupList_ItemClick" Visibility="Collapsed">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource CardBorderStyle}" Margin="0,4">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Subject}" FontSize="13.5"
+                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding CountText}" FontSize="12"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding NewestText}" FontSize="11"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
         </Grid>
 
         <controls:DetailDrawer x:Name="Drawer" />

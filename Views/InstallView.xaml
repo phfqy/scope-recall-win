@@ -61,9 +61,6 @@
                     <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
                                Text="如果该目录已有记忆库，只会做校验与权限检查（不重装）；否则会新建插件运行环境与记忆库。" />
 
-                    <CheckBox x:Name="ChkConfirm"
-                              Content="我确认在本机部署记忆插件（新部署约占用 1.5 GB 磁盘，需要几分钟）" />
-
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="BtnDeploy" Content="开始部署"
                                 Style="{StaticResource AccentButtonStyle}" Click="BtnDeploy_Click" />

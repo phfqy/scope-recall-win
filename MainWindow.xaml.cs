@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using ScopeRecallWin.Infrastructure;
 using Windows.System;
 
 namespace ScopeRecallWin;
@@ -35,41 +36,45 @@ public sealed partial class MainWindow : Window
         ["settings"]    = typeof(Views.SettingsView),
     };
 
-    /// <summary>导航分组：组名 + （Tag / 标题 / Segoe 图标码 / 悬浮提示=副标题）。</summary>
+    /// <summary>导航分组：组名 + （Tag / 标题 / Segoe 图标码 / 副标题）。
+    /// 检索与查询置顶 —— 它们是跨全部记忆的全局入口；副标题一律使用人话，不出现上游英文术语。</summary>
     private static readonly (string Group, (string Tag, string Label, string Glyph, string Tip)[] Items)[] NavGroups =
     {
+        ("检索与查询", new[]
+        {
+            ("search", "检索", "\uE721", "在全部记忆中搜索关键词"),
+            ("query",  "查询", "\uE8B7", "追溯来源 / 主题聚合 / 实体匹配"),
+        }),
         ("总览与洞察", new[]
         {
-            ("overview", "总览", "\uE80F", "健康分 / 规模 / 缺口"),
-            ("claims",   "记忆", "\uE8A5", "claim 全量 + 状态机"),
-            ("timeline", "时间线", "\uE823", "session/episode/capture 事件"),
-            ("query",    "查询", "\uE721", "recall / trace / entity"),
-            ("profile",  "档案", "\uE77B", "profile 确定性分类视图"),
+            ("overview", "总览", "\uE80F", "记忆库整体情况与健康度"),
+            ("claims",   "记忆", "\uE8A5", "全部记忆条目与状态"),
+            ("timeline", "时间线", "\uE823", "谁在什么时候说了什么"),
+            ("profile",  "档案", "\uE77B", "按主题归类查看记忆"),
         }),
         ("运行与诊断", new[]
         {
-            ("queue",  "队列", "\uE8FD", "work_items + 失败重试"),
-            ("doctor", "诊断", "\uE9D9", "doctor 报告与能力缺口"),
-            ("ops",    "运维", "\uE898", "backup/adopt/migrate/respace"),
+            ("queue",  "队列", "\uE8FD", "后台任务与失败重试"),
+            ("doctor", "诊断", "\uE9D9", "环境体检与服务连通性"),
+            ("ops",    "运维", "\uE898", "备份、恢复与维护"),
         }),
         ("操作与审计", new[]
         {
-            ("mutate", "变更", "\uE70F", "人工修改记忆（revise / forget + 授权句）"),
-            ("audit",  "审计", "\uE81C", "record_event 时间线 + 订阅"),
-            ("search", "检索", "\uE71C", "词法关键词检索"),
+            ("mutate", "变更", "\uE70F", "人工修改或删除记忆"),
+            ("audit",  "审计", "\uE81C", "删除记录台账"),
         }),
-        ("AI 与配置", new[]
+        ("助手与模型", new[]
         {
-            ("ai-info",     "AI 模型", "\uE768", "worker 状态 / 今日统计"),
-            ("ai-changes",  "AI 改动", "\uE895", "candidate_lifecycle 留痕"),
-            ("ai-settings", "AI 设置", "\uE713", "runtime-config 全量编辑器"),
+            ("ai-info",     "助手连接", "\uE768", "已接入的助手与运行状态"),
+            ("ai-changes",  "候选记录", "\uE895", "AI 提取候选的处理留痕"),
+            ("ai-settings", "模型配置", "\uE713", "记忆所用的模型与密钥"),
         }),
         ("维护与共享", new[]
         {
-            ("update",   "更新", "\uE777", "一键更新插件本体"),
-            ("install",  "安装", "\uE8B7", "plan/apply-install 向导"),
-            ("shared",   "共享存储", "\uE716", "init-shared / attach / import-entry"),
-            ("settings", "设置", "\uE713", "主题 / 巡检 / 开机自启"),
+            ("update",   "更新", "\uE777", "软件与插件版本"),
+            ("install",  "安装", "\uE7B8", "部署目录与首次安装"),
+            ("shared",   "共享存储", "\uE716", "已接入的助手成员管理"),
+            ("settings", "设置", "\uE713", "外观 / 更新 / 开机自启"),
         }),
     };
 
@@ -100,6 +105,9 @@ public sealed partial class MainWindow : Window
         TrySetMica();
         App.Trace("MainWindow: after TrySetMica");
 
+        // 应用图标：exe 图标由 csproj 的 ApplicationIcon 提供；窗口与任务栏图标需显式设置
+        TrySetIcon();
+
         App.Trace("MainWindow: before BuildNavigation");
         BuildNavigation();
         App.Trace("MainWindow: after BuildNavigation");
@@ -126,9 +134,133 @@ public sealed partial class MainWindow : Window
         };
         accelerator.Invoked += (_, _) => TogglePalette();
         RootGrid.KeyboardAccelerators.Add(accelerator);
+
+        // Ctrl+F：聚焦顶栏全局搜索框
+        var focusSearch = new KeyboardAccelerator
+        {
+            Key = VirtualKey.F,
+            Modifiers = VirtualKeyModifiers.Control,
+        };
+        focusSearch.Invoked += (_, _) => TxtGlobalSearch.Focus(FocusState.Programmatic);
+        RootGrid.KeyboardAccelerators.Add(focusSearch);
+
+        // 外观：应用保存的主题设置（含标题栏配色，避免顶栏与内容区色调不一致）
+        ThemeService.Apply(App.Settings.Theme);
         App.Trace("MainWindow: ctor done");
 
         // 关闭窗口最小化到托盘：由 Services/TrayService 在 P4 接入（此处预留）
+    }
+
+    // ---------- 外观（主题 / 图标） ----------
+
+    /// <summary>应用主题到根元素与标题栏（由 Infrastructure/ThemeService 调用）。</summary>
+    public void ApplyTheme(ElementTheme theme)
+    {
+        try
+        {
+            RootGrid.RequestedTheme = theme;
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash("MainWindow.ApplyTheme.Root", ex);
+        }
+        ApplyTitleBarColors();
+    }
+
+    /// <summary>
+    /// 标题栏配色：标题栏由系统绘制，不设置时**跟随系统主题**而非应用主题，
+    /// 这就是"顶栏色调与内容区不统一"的原因；这里按当前实际明暗显式设定。
+    /// </summary>
+    private void ApplyTitleBarColors()
+    {
+        try
+        {
+            var titleBar = AppWindow.TitleBar;
+            if (!Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
+            {
+                return;
+            }
+
+            var dark = ThemeService.IsDark;
+            var background = dark
+                ? Windows.UI.Color.FromArgb(0xFF, 0x1B, 0x1B, 0x1D)
+                : Windows.UI.Color.FromArgb(0xFF, 0xF3, 0xF3, 0xF3);
+            var foreground = dark
+                ? Windows.UI.Color.FromArgb(0xFF, 0xF2, 0xF2, 0xF4)
+                : Windows.UI.Color.FromArgb(0xFF, 0x1A, 0x1A, 0x1C);
+            var hover = dark
+                ? Windows.UI.Color.FromArgb(0xFF, 0x2E, 0x2E, 0x33)
+                : Windows.UI.Color.FromArgb(0xFF, 0xE2, 0xE2, 0xE6);
+            var pressed = dark
+                ? Windows.UI.Color.FromArgb(0xFF, 0x3A, 0x3A, 0x40)
+                : Windows.UI.Color.FromArgb(0xFF, 0xD4, 0xD4, 0xD9);
+            var inactive = dark
+                ? Windows.UI.Color.FromArgb(0xFF, 0x8A, 0x8A, 0x92)
+                : Windows.UI.Color.FromArgb(0xFF, 0x6A, 0x6A, 0x70);
+
+            titleBar.BackgroundColor = background;
+            titleBar.InactiveBackgroundColor = background;
+            titleBar.ForegroundColor = foreground;
+            titleBar.InactiveForegroundColor = inactive;
+            titleBar.ButtonBackgroundColor = background;
+            titleBar.ButtonInactiveBackgroundColor = background;
+            titleBar.ButtonForegroundColor = foreground;
+            titleBar.ButtonInactiveForegroundColor = inactive;
+            titleBar.ButtonHoverBackgroundColor = hover;
+            titleBar.ButtonHoverForegroundColor = foreground;
+            titleBar.ButtonPressedBackgroundColor = pressed;
+            titleBar.ButtonPressedForegroundColor = foreground;
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash("MainWindow.ApplyTitleBarColors", ex);
+        }
+    }
+
+    /// <summary>设置窗口/任务栏图标（Assets/app.ico，由 generate_icons.py 生成）。</summary>
+    private void TrySetIcon()
+    {
+        try
+        {
+            var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+            if (System.IO.File.Exists(iconPath))
+            {
+                AppWindow.SetIcon(iconPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash("MainWindow.TrySetIcon", ex);
+        }
+    }
+
+    // ---------- 顶栏全局检索 ----------
+
+    private void TxtGlobalSearch_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Enter)
+        {
+            RunGlobalSearch();
+        }
+    }
+
+    private void BtnGlobalSearch_Click(object sender, RoutedEventArgs e) => RunGlobalSearch();
+
+    /// <summary>跳转到检索页并执行检索（顶栏与命令面板共用）。</summary>
+    private void RunGlobalSearch(string? keywordOverride = null)
+    {
+        var keyword = keywordOverride ?? (TxtGlobalSearch.Text ?? "").Trim();
+        NavigateTo(Views["search"]);
+        if (_navButtons.TryGetValue("search", out var parts))
+        {
+            SetActive(parts);
+        }
+        if (_viewCache.TryGetValue(typeof(Views.SearchView), out var cached)
+            && cached is Views.SearchView searchView)
+        {
+            searchView.RunSearch(keyword);
+        }
+        TxtGlobalSearch.Text = keyword;
     }
 
     // ---------- 侧边栏 ----------

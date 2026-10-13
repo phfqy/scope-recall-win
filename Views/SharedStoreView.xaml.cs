@@ -14,9 +14,6 @@ namespace ScopeRecallWin.Views;
 
 public sealed partial class SharedStoreView : UserControl
 {
-    /// <summary>接入确认语句（勾选即代表本人确认，等价于手写授权句）。</summary>
-    private const string AttachConfirmSentence = "我确认把该助手接入共享记忆库";
-
     /// <summary>宿主类型 → 默认数据目录（选中即自动填写，可改）。</summary>
     private static readonly Dictionary<string, (string Dir, string Label, string Sample)> HostDefaults = new()
     {
@@ -34,16 +31,19 @@ public sealed partial class SharedStoreView : UserControl
     {
         InitializeComponent();
         _plugin = ServiceLocator.Get<IPluginService>();
+        // 宿主类型：选择后自动填充成员标识、显示名称与默认数据目录
+        PickerHost.SetItems(
+            new[] { "WorkBuddy", "WorkBuddy AI", "DeepSeek Harness（DSH）", "Hermes", "Codex", "Claude Code" },
+            selectedIndex: 0,
+            tags: new[] { "workbuddy", "workbuddy-ai", "dsh", "hermes", "codex", "claude-code" });
+        PickerHost.SelectionChanged += (_, _) => ApplyHostPreset();
         Loaded += (_, _) => UiThread.Run(DispatcherQueue, "SharedStoreView.Loaded", LoadAsync);
     }
 
     private async Task LoadAsync()
     {
         await ReloadAsync();
-        if (CmbHost.SelectedItem is null)
-        {
-            CmbHost.SelectedIndex = 0;
-        }
+        ApplyHostPreset();
     }
 
     // ---------- 当前共享库 ----------
@@ -94,10 +94,10 @@ public sealed partial class SharedStoreView : UserControl
 
     // ---------- 表单 ----------
 
-    private void CmbHost_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void ApplyHostPreset()
     {
-        if (CmbHost.SelectedItem is not ComboBoxItem { Tag: string tag }
-            || !HostDefaults.TryGetValue(tag, out var preset))
+        var tag = PickerHost.SelectedTag ?? "";
+        if (!HostDefaults.TryGetValue(tag, out var preset))
         {
             return;
         }
@@ -142,7 +142,7 @@ public sealed partial class SharedStoreView : UserControl
                 return;
             }
 
-            var host = (CmbHost.SelectedItem as ComboBoxItem)?.Tag as string ?? "";
+            var host = PickerHost.SelectedTag ?? "";
             var entry = (TxtEntryId.Text ?? "").Trim();
             var displayName = (TxtDisplayName.Text ?? "").Trim();
             var instanceRoot = (TxtInstanceRoot.Text ?? "").Trim();
@@ -167,12 +167,6 @@ public sealed partial class SharedStoreView : UserControl
                 SetAttachState($"该数据目录不存在：{instanceRoot}（请确认路径是否正确）", "failed");
                 return;
             }
-            if (ChkAttachConfirm.IsChecked != true)
-            {
-                SetAttachState("请先勾选确认框：需要你本人确认本次接入。", "pending");
-                return;
-            }
-
             var dialog = new ContentDialog
             {
                 Title = "确认接入共享库",

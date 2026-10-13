@@ -21,8 +21,13 @@
                 <TextBlock Style="{StaticResource PageDescTextStyle}"
                                Text="逐 entry 运行官方 doctor CLI，原样透传健康报告。只读，不产生任何写入。" />
             </StackPanel>
-            <Button Grid.Column="1" x:Name="BtnRun" Content="运行诊断" Click="BtnRun_Click"
-                    VerticalAlignment="Center" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button x:Name="BtnRun" Content="运行诊断" Click="BtnRun_Click" />
+                <Button x:Name="BtnCopyAll" Content="复制全部报告" IsEnabled="False"
+                        Click="BtnCopyAll_Click" />
+                <Button x:Name="BtnSaveReport" Content="保存为文件" IsEnabled="False"
+                        Click="BtnSaveReport_Click" />
+            </StackPanel>
         </Grid>
 
         <TextBlock Grid.Row="1" x:Name="TxtSummary" Style="{StaticResource PageDescTextStyle}"
@@ -50,7 +55,12 @@
                             <TextBlock Text="{Binding Report}" FontSize="11.5" TextWrapping="Wrap"
                                        FontFamily="Consolas"
                                        Foreground="{StaticResource MutedTextBrush}"
+                                       IsTextSelectionEnabled="True"
                                        MaxHeight="200" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="复制这份报告" FontSize="11.5" Padding="8,3"
+                                        Click="BtnCopyReport_Click" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </DataTemplate>

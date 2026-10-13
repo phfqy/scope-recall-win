@@ -33,7 +33,7 @@ public sealed record ConnectionTestResult(bool Ok, int LatencyMs, string Detail,
 public interface IModelConfigService
 {
     Task<ModelConfig?> LoadAsync(CancellationToken ct = default);
-    Task<ModelSaveResult> SaveAsync(ModelConfig config, string authorization, CancellationToken ct = default);
+    Task<ModelSaveResult> SaveAsync(ModelConfig config, CancellationToken ct = default);
     Task<ConnectionTestResult> TestConnectionAsync(string endpoint, string credentialEnv, CancellationToken ct = default);
     Task<bool> HasStoredKeyAsync(string credentialEnv);
     Task<bool> StoreKeyAsync(string credentialEnv, string secret);
@@ -90,15 +90,11 @@ public sealed class ModelConfigService : IModelConfigService
         }
     }
 
-    public async Task<ModelSaveResult> SaveAsync(ModelConfig config, string authorization, CancellationToken ct = default)
+    public async Task<ModelSaveResult> SaveAsync(ModelConfig config, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(config.ConfigPath) || !File.Exists(config.ConfigPath))
         {
             return new ModelSaveResult(false, "未找到 runtime-config.json。", null);
-        }
-        if (string.IsNullOrWhiteSpace(authorization) || authorization.Trim().Length < 6)
-        {
-            return new ModelSaveResult(false, "授权句不足 6 字：请用一句话确认你本人了解本次配置修改。", null);
         }
 
         try

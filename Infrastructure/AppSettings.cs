@@ -27,6 +27,9 @@ public sealed class AppSettings
     /// <summary>界面语言预留（当前仅简体中文）。</summary>
     public string Language { get; set; } = "zh-CN";
 
+    /// <summary>外观主题：system=跟随系统；light=浅色；dark=深色。</summary>
+    public string Theme { get; set; } = "system";
+
     public static string SettingsDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ScopeRecallWin");
 

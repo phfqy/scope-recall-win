@@ -1,82 +1,124 @@
 <UserControl
     x:Class="ScopeRecallWin.Views.MutateView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:controls="using:ScopeRecallWin.Controls">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <ScrollViewer>
         <StackPanel Padding="26" Spacing="14" MaxWidth="900">
+
             <TextBlock Text="变更" Style="{StaticResource PageTitleTextStyle}" />
             <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
-                       Text="人工修改记忆（Hermes adapter 工具面 revise / forget，协议 v1.1）。表单按上游 schema 实时预校验；写入通道（resident / MCP）将在下一期接入，本页当前提供完整的请求构造与校验。" />
+                       Text="修改或删除一条记忆，三步完成：① 找到它 ② 选要做什么 ③ 确认执行。每一步都会在界面上说明影响。" />
 
-            <TabView x:Name="MutateTabs">
-                <TabViewItem Header="revise（纠正 / 撤回）">
-                    <ScrollViewer>
-                        <StackPanel Spacing="10" Padding="0,10,0,0">
-                            <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
-                                       Text="纠正一条记忆：给出新值即改写（旧值留作历史版本）；new_value 留空 = 撤回该记忆。" />
-                            <TextBox x:Name="RevTargetRef" Header="target_ref（必填，如 claim_id 或 claim_id@revision）" />
-                            <TextBox x:Name="RevExpectedRevision" Header="expected_revision（乐观并发，≥1）" Text="1" />
-                            <TextBox x:Name="RevNewValue" Header="new_value（JSON；留空 = 撤回）"
-                                     AcceptsReturn="True" TextWrapping="Wrap" Height="96"
-                                     PlaceholderText='例如 {"value_text": "新的值"}' />
-                            <TextBox x:Name="RevConditions" Header="conditions（每行一条，最多 16）"
-                                     AcceptsReturn="True" TextWrapping="Wrap" Height="72" />
-                            <TextBox x:Name="RevEvidenceRefs" Header="source_evidence_refs（每行一个，1..32 且唯一）"
-                                     AcceptsReturn="True" TextWrapping="Wrap" Height="72" />
-                            <TextBox x:Name="RevValidFrom" Header="valid_from（可选，ISO 8601）"
-                                     PlaceholderText="2026-10-13T00:00:00+08:00" />
-                        </StackPanel>
-                    </ScrollViewer>
-                </TabViewItem>
-
-                <TabViewItem Header="forget（停用 / 抹除）">
-                    <ScrollViewer>
-                        <StackPanel Spacing="10" Padding="0,10,0,0">
-                            <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
-                                       Text="suppress：停用（不再主动使用、仍可按需读取，不可撤销）。delete：抹除（连同来源消息及其它事实一并删除，不可撤销）。" />
-                            <TextBox x:Name="ForTargetRefs" Header="target_refs（每行一个，1..100 且唯一）"
-                                     AcceptsReturn="True" TextWrapping="Wrap" Height="96" />
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="mode" Style="{StaticResource PageDescTextStyle}" />
-                                <StackPanel Orientation="Horizontal" Spacing="16">
-                                    <RadioButton x:Name="ForModeSuppress" Content="suppress（停用）"
-                                                 GroupName="ForgetMode" IsChecked="True" />
-                                    <RadioButton x:Name="ForModeDelete" Content="delete（抹除，不可撤销）"
-                                                 GroupName="ForgetMode" />
-                                </StackPanel>
-                            </StackPanel>
-                            <TextBox x:Name="ForExpectedRevisions" Header="expected_revisions（每行 ref=revision）"
-                                     AcceptsReturn="True" TextWrapping="Wrap" Height="72"
-                                     PlaceholderText="claim_xxx=3" />
-                            <TextBox x:Name="ForReason" Header="reason（可选，≤1024）" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </ScrollViewer>
-                </TabViewItem>
-            </TabView>
-
-            <!-- 授权句 + 校验 + 预览 -->
+            <!-- 步骤 1：找到要改的记忆 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="授权与校验" />
-                    <TextBox x:Name="TxtAuthorization"
-                             Header="授权句（本人书写，≥6 字且需点明 target_ref；不代笔 / 不预填）"
-                             TextWrapping="Wrap"
-                             PlaceholderText="例：我确认把 claim_xxx 的值改为新值" />
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="第 1 步 · 找到要修改的记忆" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="按关键词搜索（匹配主题、属性或内容），然后点击列表中的一条。" />
 
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="BtnValidate" Content="预校验并预览请求" Click="BtnValidate_Click" />
-                        <Button x:Name="BtnExecute" Content="执行变更"
-                                Style="{StaticResource DangerButtonStyle}" Click="BtnExecute_Click" />
-                    </StackPanel>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" x:Name="TxtSearch"
+                                 PlaceholderText="输入关键词，例如：部署 / 缓存 / WorkBuddy"
+                                 KeyDown="TxtSearch_KeyDown" />
+                        <Button Grid.Column="1" x:Name="BtnSearch" Content="搜索" Click="BtnSearch_Click" />
+                    </Grid>
 
-                    <TextBlock x:Name="TxtValidation" Style="{StaticResource PageDescTextStyle}"
-                               TextWrapping="Wrap" Text="填写表单后点击「预校验并预览请求」。" />
-                    <TextBlock x:Name="TxtEnvelope" Style="{StaticResource MonoTextStyle}"
-                               TextWrapping="Wrap" IsTextSelectionEnabled="True" Visibility="Collapsed" />
+                    <ListView x:Name="ClaimList" MaxHeight="240" SelectionMode="Single"
+                              IsItemClickEnabled="True" ItemClick="ClaimList_ItemClick">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Padding="4,6">
+                                    <TextBlock Text="{Binding Head}" FontSize="12.5"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Sub}" FontSize="11"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <TextBlock x:Name="TxtSelected" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
+
+            <!-- 步骤 2：选择要做什么 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="第 2 步 · 要做什么" />
+
+                    <StackPanel Spacing="6">
+                        <RadioButton x:Name="RadioRevise" Content="改内容：把这条记忆改成新的说法"
+                                     GroupName="MutateAction" IsChecked="True" Checked="Action_Changed" />
+                        <RadioButton x:Name="RadioWithdraw" Content="撤回：撤销这条记忆（保留历史，不再使用）"
+                                     GroupName="MutateAction" Checked="Action_Changed" />
+                        <RadioButton x:Name="RadioSuppress" Content="停用：暂时不再使用，但数据仍保留"
+                                     GroupName="MutateAction" Checked="Action_Changed" />
+                        <RadioButton x:Name="RadioDelete" Content="删除：连同来源消息一起抹除（不可撤销）"
+                                     GroupName="MutateAction" Checked="Action_Changed" />
+                    </StackPanel>
+
+                    <TextBox x:Name="TxtNewValue" Header="新的内容" TextWrapping="Wrap" Height="72"
+                             AcceptsReturn="True"
+                             PlaceholderText="把这条记忆改成什么？例如：项目使用 pnpm 管理前端依赖" />
+
+                    <TextBox x:Name="TxtReason" Header="原因（可选，便于日后追溯）"
+                             PlaceholderText="例如：用户纠正了之前的说法" />
+                </StackPanel>
+            </Border>
+
+            <!-- 步骤 3：确认执行 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="第 3 步 · 确认执行" />
+
+                    <Border x:Name="PreviewBox" Background="{StaticResource Surface2Brush}"
+                            CornerRadius="6" Padding="12">
+                        <StackPanel Spacing="6">
+                            <TextBlock x:Name="TxtPreviewTitle" FontSize="12.5"
+                                       FontWeight="SemiBold" Text="尚未选择记忆" />
+                            <TextBlock x:Name="TxtPreviewBody" FontSize="12" TextWrapping="Wrap"
+                                       IsTextSelectionEnabled="True"
+                                       Foreground="{StaticResource MutedTextBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="BtnExecute" Content="执行变更"
+                                Style="{StaticResource AccentButtonStyle}" Click="BtnExecute_Click" />
+                        <Button x:Name="BtnPreviewEnvelope" Content="查看技术请求（高级）"
+                                Click="BtnPreviewEnvelope_Click" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="TxtState" TextWrapping="Wrap" FontSize="12.5"
+                               Foreground="{StaticResource MutedTextBrush}" />
+
+                    <Expander x:Name="AdvExpander" Header="技术细节（请求信封）" HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Stretch" Visibility="Collapsed">
+                        <TextBlock x:Name="TxtEnvelope" Style="{StaticResource MonoTextStyle}"
+                                   TextWrapping="Wrap" IsTextSelectionEnabled="True" Padding="0,8,0,0" />
+                    </Expander>
+                </StackPanel>
+            </Border>
+
+            <!-- 说明 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="需要了解的几点" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="• 「改内容」会生成新版本，旧说法保留在历史里，可追溯。" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="• 「撤回」与「停用」都不删除数据；「删除」会连同来源消息一起抹除且无法恢复。" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="• 变更会留痕，可在「审计」页查看操作记录。" />
+                </StackPanel>
+            </Border>
+
         </StackPanel>
     </ScrollViewer>
 </UserControl>

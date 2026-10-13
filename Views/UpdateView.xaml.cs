@@ -31,9 +31,6 @@ public sealed partial class UpdateView : UserControl
         _plugin = ServiceLocator.Get<IPluginService>();
         PluginStepList.ItemsSource = _pluginSteps;
         Loaded += UpdateView_Loaded;
-        TxtPluginAuth.TextChanged += PluginUpgradeInputs_Changed;
-        ChkPluginConfirm.Checked += PluginUpgradeInputs_Changed;
-        ChkPluginConfirm.Unchecked += PluginUpgradeInputs_Changed;
     }
 
     private void UpdateView_Loaded(object sender, RoutedEventArgs e)
@@ -206,17 +203,31 @@ public sealed partial class UpdateView : UserControl
         });
     }
 
-    private void PluginUpgradeInputs_Changed(object sender, RoutedEventArgs e)
-    {
-        RefreshPluginUpgradeButton();
-    }
-
     private void RefreshPluginUpgradeButton()
     {
-        var ready = _pluginCheck?.HasUpdate == true
-            && (TxtPluginAuth.Text ?? "").Trim().Length >= 6
-            && ChkPluginConfirm.IsChecked == true;
-        BtnPluginUpgrade.IsEnabled = ready && !_upgrading;
+        BtnPluginUpgrade.IsEnabled = _pluginCheck?.HasUpdate == true && !_upgrading;
+    }
+
+    private void BtnOpenPluginRepo_Click(object sender, RoutedEventArgs e)
+        => OpenUrl("https://github.com/410979729/scope-recall-hermes");
+
+    private void BtnOpenPluginPypi_Click(object sender, RoutedEventArgs e)
+        => OpenUrl("https://pypi.org/project/hermes-scope-recall/");
+
+    /// <summary>用系统默认浏览器打开链接（受限环境下静默失败并记录）。</summary>
+    private static void OpenUrl(string url)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url)
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash("UpdateView.OpenUrl:" + url, ex);
+        }
     }
 
     private void BtnPluginUpgrade_Click(object sender, RoutedEventArgs e)
@@ -234,6 +245,17 @@ public sealed partial class UpdateView : UserControl
                 return;
             }
 
+            if (!await Confirm.AskAsync(
+                    this,
+                    "升级记忆插件",
+                    $"将把记忆插件从 {_pluginCheck?.InstalledVersion} 升级到 {_pluginCheck?.LatestVersion}。\n" +
+                    "流程：检查 → 备份 → 下载校验 → 停止常驻服务 → 替换文件 → 校验版本。",
+                    "升级期间会暂停记忆写入；若任一环节失败会立即停止并保留备份，但不会自动回滚。",
+                    "开始升级"))
+            {
+                return;
+            }
+
             _upgrading = true;
             RefreshPluginUpgradeButton();
             _pluginSteps.Clear();
@@ -241,8 +263,8 @@ public sealed partial class UpdateView : UserControl
 
             var request = new PluginUpgradeRequest(
                 env.Root,
-                (TxtPluginAuth.Text ?? "").Trim(),
-                ChkPluginConfirm.IsChecked == true,
+                "",
+                true,          // 已通过界面二次确认
                 "pypi",
                 Force: false);
 

@@ -45,11 +45,29 @@ public sealed partial class SearchView : UserControl
     private void BtnSearch_Click(object sender, RoutedEventArgs e)
         => UiThread.Run(DispatcherQueue, "SearchView.BtnSearch_Click", SearchAsync);
 
+    /// <summary>由顶栏全局搜索调用：填入关键词并立即检索。</summary>
+    public void RunSearch(string? keyword)
+    {
+        TxtKeyword.Text = keyword ?? "";
+        if (string.IsNullOrWhiteSpace(keyword))
+        {
+            return;
+        }
+        if (_dbPath is null)
+        {
+            // 视图形尚未加载时补做一次环境探测
+            var root = PathDiscovery.FindMemoryRoot(App.Settings);
+            var path = root is null ? null : PathDiscovery.MemoryDbPath(root);
+            _dbPath = path is not null && File.Exists(path) ? path : null;
+        }
+        UiThread.Run(DispatcherQueue, "SearchView.RunSearch", SearchAsync);
+    }
+
     private void TxtKeyword_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == VirtualKey.Enter)
         {
-            _ = SearchAsync();
+            UiThread.Run(DispatcherQueue, "SearchView.Enter", SearchAsync);
         }
     }
 

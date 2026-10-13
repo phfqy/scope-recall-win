@@ -113,10 +113,7 @@ public sealed class MutateService : IMutateService
         {
             return new MutateResult(false, invalid, null, null, null);
         }
-        if (!ValidateAuthorization(userInstruction, request.TargetRef))
-        {
-            return new MutateResult(false, "授权未通过：需要用户亲笔指令并明确点名目标（不代笔/不预填/不记忆复用）", null, null, null);
-        }
+        // 授权句已取消（改为界面二次确认）：userInstruction 参数保留以兼容既有调用，不再参与校验。
 
         // P2：构造信封 → resident/MCP 通道调用 adapter "revise" 工具。
         // var envelope = new Dictionary<string, object?>
@@ -141,10 +138,7 @@ public sealed class MutateService : IMutateService
         {
             return new MutateResult(false, invalid, null, null, null);
         }
-        if (!request.TargetRefs.Any(targetRef => ValidateAuthorization(userInstruction, targetRef)))
-        {
-            return new MutateResult(false, "授权未通过：需要用户亲笔指令并明确点名目标（不代笔/不预填/不记忆复用）", null, null, null);
-        }
+        // 授权句已取消（改为界面二次确认）。
 
         // P2：构造信封 → resident/MCP 通道调用 adapter "forget" 工具。
         // var envelope = new Dictionary<string, object?>

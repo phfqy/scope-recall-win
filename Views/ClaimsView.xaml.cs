@@ -30,6 +30,10 @@ public sealed partial class ClaimsView : UserControl
         InitializeComponent();
         _storage = ServiceLocator.Get<IStorageService>();
         Table.RowTapped += Table_RowTapped;
+        PickerStatus.SetItems(
+            new[] { "全部状态", "已生效", "待确认", "有争议", "已被取代", "已撤回" },
+            selectedIndex: 0,
+            tags: new[] { "all", "active", "proposed", "disputed", "superseded", "retracted" });
         Loaded += ClaimsView_Loaded;
     }
 
@@ -68,11 +72,7 @@ public sealed partial class ClaimsView : UserControl
             return;
         }
 
-        var status = ((ComboBoxItem)CmbStatus.SelectedItem)?.Content?.ToString();
-        if (status == "全部状态")
-        {
-            status = "all";
-        }
+        var status = PickerStatus.SelectedTag ?? "all";
         var query = (TxtSearch.Text ?? "").Trim();
         if (query.Length == 0)
         {

@@ -26,6 +26,10 @@ public sealed partial class AiChangesView : UserControl
         InitializeComponent();
         _storage = ServiceLocator.Get<IStorageService>();
         Table.RowTapped += Table_RowTapped;
+        PickerState.SetItems(
+            new[] { "全部状态", "待补充证据", "待评估", "已处理", "已归档", "休眠" },
+            selectedIndex: 0,
+            tags: new[] { "all", "waiting_evidence", "pending_evaluation", "resolved", "archived", "dormant" });
         Loaded += AiChangesView_Loaded;
     }
 
@@ -64,11 +68,7 @@ public sealed partial class AiChangesView : UserControl
             return;
         }
 
-        var state = ((ComboBoxItem)CmbState.SelectedItem)?.Content?.ToString();
-        if (state == "全部状态")
-        {
-            state = "all";
-        }
+        var state = PickerState.SelectedTag ?? "all";
 
         var (rows, total) = await _storage.GetCandidatesAsync(_dbPath, state, 300);
         _rows = rows.ToList();

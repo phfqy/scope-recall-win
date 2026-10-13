@@ -26,6 +26,15 @@ public sealed partial class TimelineView : UserControl
         InitializeComponent();
         _storage = ServiceLocator.Get<IStorageService>();
         Loaded += TimelineView_Loaded;
+        // 角色 = 这条内容由谁产生：用户输入 / 助手回复 / 工具调用结果
+        PickerRole.SetItems(
+            new[] { "全部角色", "用户", "助手", "工具" },
+            selectedIndex: 0,
+            tags: new[] { "all", "user", "assistant", "tool" });
+        PickerRange.SetItems(
+            new[] { "最近 500 条", "最近 2000 条", "全部" },
+            selectedIndex: 0,
+            tags: new[] { "500", "2000", "all" });
     }
 
     private void TimelineView_Loaded(object sender, RoutedEventArgs e)
@@ -63,15 +72,11 @@ public sealed partial class TimelineView : UserControl
             return;
         }
 
-        var role = ((ComboBoxItem)CmbRole.SelectedItem)?.Content?.ToString();
-        if (role == "全部角色")
+        var role = PickerRole.SelectedTag ?? "all";
+        var limit = PickerRange.SelectedTag switch
         {
-            role = "all";
-        }
-        var limit = CmbRange.SelectedIndex switch
-        {
-            1 => 2000,
-            2 => 100000,
+            "2000" => 2000,
+            "all" => 100000,
             _ => 500,
         };
         var query = (TxtSearch.Text ?? "").Trim();
