@@ -161,7 +161,7 @@ public sealed class MutateService : IMutateService
     }
 
     /// <summary>按 revise schema 预校验（与上游 strict boundary 同口径，失败早返回）。</summary>
-    private static string? ValidateRevise(ReviseRequest r)
+    public static string? ValidateRevise(ReviseRequest r)
     {
         if (string.IsNullOrWhiteSpace(r.TargetRef))
         {
@@ -183,7 +183,7 @@ public sealed class MutateService : IMutateService
     }
 
     /// <summary>按 forget schema 预校验。</summary>
-    private static string? ValidateForget(ForgetRequest r)
+    public static string? ValidateForget(ForgetRequest r)
     {
         if (r.TargetRefs is { Count: < 1 or > 100 } || r.TargetRefs.Distinct().Count() != r.TargetRefs.Count)
         {

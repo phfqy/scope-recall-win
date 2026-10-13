@@ -15,6 +15,12 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <AssemblyName>ScopeRecallWin</AssemblyName>
+    <Version>1.1.0</Version>
+    <InformationalVersion>1.1.0</InformationalVersion>
+    <!-- 自定义入口：禁用 XAML 生成的 Main，改由 Program.cs 显式初始化
+         Windows App SDK Bootstrap（自动初始化在本机会 fail-fast，见 Program.cs 注释）。 -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <StartupObject>ScopeRecallWin.Program</StartupObject>
     <!-- XAML 编译走 in-proc MSBuild 任务（VS 默认路径）；
          外部 XamlCompiler.exe 进程在本机被安全策略拦截，退出码 1 且无详情。 -->
     <UseXamlCompilerExecutable>false</UseXamlCompilerExecutable>
@@ -39,10 +45,7 @@
     <None Update="app.manifest" />
   </ItemGroup>
 
-  <!-- unpackaged 形态专用：让 Windows App SDK 注入 MddBootstrap 自动初始化器，
-       进程启动时先激活 Microsoft.WindowsAppRuntime 再启动 XAML。
-       不开启则以普通 exe 运行时会 0xC000027B（WinUI 未引导）。 -->
-  <PropertyGroup>
-    <WindowsAppSdkBootstrapInitialize>true</WindowsAppSdkBootstrapInitialize>
-  </PropertyGroup>
+  <!-- 注意：unpackaged 形态下的 Windows App SDK 运行时由 Program.cs 显式
+       Bootstrap.TryInitialize 激活（不用 WindowsAppSdkBootstrapInitialize 自动注入，
+       后者在本机 self-contained 发布下会以 CoreMessagingXP 触发 fail-fast）。 -->
 </Project>

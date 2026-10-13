@@ -3,22 +3,64 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:ScopeRecallWin.Controls">
-    <Grid Padding="26" RowSpacing="12">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-        <TextBlock Text="记忆" Style="{StaticResource PageTitleTextStyle}" />
-        <TextBlock Grid.Row="1" Text="claim 全量列表 · 状态机过滤（proposed/active/disputed/superseded/retracted 五状态 + suppressed 布尔列；无 deleted 状态——删除走 forget mode=delete 的 deletion_operations）+ temporal（current/expired）+ 类型 + scope/project/branch + 关键词；行点击打开证据链（evidence_refs、revision、source_contexts、basis、conditions、valid_from/to）；导出 JSON/CSV（防公式注入）。对应附 1 第 3、4 项。"
-                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
-        <controls:Card Grid.Row="2" Title="待 P1 实现">
-            <StackPanel Spacing="8">
-                <TextBlock Text="• 过滤器：状态 / 类型 / scope / project / branch / 关键词" Style="{StaticResource MonoTextStyle}" />
-                <TextBlock Text="• 表格：DataGrid 或 ItemsControl（附 1 第 3 项 claim 状态机）" Style="{StaticResource MonoTextStyle}" />
-                <TextBlock Text="• 证据链弹窗：ContentDialog（附 1 第 4 项证据口径 claim=`=`、episode=`&lt;=`）" Style="{StaticResource MonoTextStyle}" />
-                <TextBlock Text="• 导出：FileSavePicker + CSV 公式注入转义（约束 8）" Style="{StaticResource MonoTextStyle}" />
-            </StackPanel>
-        </controls:Card>
+
+    <Grid>
+        <Grid Padding="26" MaxWidth="1100">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="记忆" Style="{StaticResource PageTitleTextStyle}" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}"
+                               Text="claim 全量列表与状态机。点击行查看当前值、历史版本与证据引文。" />
+                </StackPanel>
+                <Button Grid.Column="1" x:Name="BtnRefresh" Content="刷新" Click="BtnRefresh_Click"
+                        VerticalAlignment="Center" />
+            </Grid>
+
+            <!-- 工具栏：状态过滤 + 搜索 + 导出 -->
+            <Grid Grid.Row="1" Margin="0,12,0,12" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ComboBox Grid.Column="0" x:Name="CmbStatus" Width="130" SelectedIndex="0">
+                    <ComboBoxItem Content="全部状态" />
+                    <ComboBoxItem Content="active" />
+                    <ComboBoxItem Content="proposed" />
+                    <ComboBoxItem Content="disputed" />
+                    <ComboBoxItem Content="superseded" />
+                    <ComboBoxItem Content="retracted" />
+                </ComboBox>
+                <Button Grid.Column="1" x:Name="BtnFilter" Content="筛选" Click="BtnFilter_Click" />
+                <TextBox Grid.Column="2" x:Name="TxtSearch" PlaceholderText="搜索 subject / predicate / claim_id" />
+                <Button Grid.Column="3" x:Name="BtnSearch" Content="搜索" Click="BtnSearch_Click" />
+                <Button Grid.Column="4" x:Name="BtnPrev" Content="上一页" Click="BtnPrev_Click" IsEnabled="False" />
+                <Button Grid.Column="5" x:Name="BtnNext" Content="下一页" Click="BtnNext_Click" IsEnabled="False" />
+            </Grid>
+
+            <Grid Grid.Row="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" x:Name="TxtTotal" Style="{StaticResource PageDescTextStyle}" Margin="0,0,0,6" />
+                <controls:SimpleTable Grid.Row="1" x:Name="Table" EmptyText="没有匹配的 claim。调整筛选或搜索条件重试。" />
+            </Grid>
+        </Grid>
+
+        <controls:DetailDrawer x:Name="Drawer" />
     </Grid>
 </UserControl>

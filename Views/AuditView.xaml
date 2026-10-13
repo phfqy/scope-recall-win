@@ -3,21 +3,45 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:ScopeRecallWin.Controls">
-    <Grid Padding="26" RowSpacing="12">
+
+    <Grid Padding="26" MaxWidth="1000">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <TextBlock Text="审计" Style="{StaticResource PageTitleTextStyle}" />
-        <TextBlock Grid.Row="1" Text="record_event 时间线（谁在什么时候改了什么、依据、memory_epoch）+ deletion_operations 各物理层（sqlite/vector/attachment）收尾状态 + 导出 Markdown/JSON + 订阅新变更（epoch 增加 → 系统通知）。与 AI 改动页分工：此处仅人工变更。对应附 1 第 9、30 项。"
-                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
-        <controls:Card Grid.Row="2" Title="待 P1 实现">
-            <StackPanel Spacing="8">
-                <TextBlock Text="• 时间线：who/what/when/basis + memory_epoch 展示" Style="{StaticResource MonoTextStyle}" />
-                <TextBlock Text="• 订阅：memory_epoch 增加 → Windows 系统通知 → 点击聚焦本页" Style="{StaticResource MonoTextStyle}" />
-                <TextBlock Text="• 导出：FileSavePicker（Markdown / JSON）" Style="{StaticResource MonoTextStyle}" />
+
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="审计" Style="{StaticResource PageTitleTextStyle}" />
+                <TextBlock Style="{StaticResource PageDescTextStyle}"
+                           Text="删除操作台账（deletion_operations）：谁在何时以何种模式删除了哪些对象。只读，可导出 MD/JSON。" />
             </StackPanel>
-        </controls:Card>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button x:Name="BtnRefresh" Content="刷新" Click="BtnRefresh_Click" />
+                <Button x:Name="BtnExport" Content="导出 Markdown" Click="BtnExport_Click" />
+            </StackPanel>
+        </Grid>
+
+        <TextBlock Grid.Row="1" x:Name="TxtTotal" Style="{StaticResource PageDescTextStyle}"
+                   Margin="0,12,0,8" />
+
+        <ListView Grid.Row="2" x:Name="OpList" SelectionMode="None">
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Border Style="{StaticResource CardBorderStyle}" Margin="0,4">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{Binding Title}" FontSize="12.5" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding Meta}" FontSize="11"
+                                       Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
     </Grid>
 </UserControl>

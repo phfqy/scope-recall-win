@@ -12,8 +12,8 @@ Scope Recall v3 记忆核心的 Windows 桌面管理控制台。**WinUI 3（Wind
 **分发形态：unpackaged exe 桌面安装版**（Inno Setup，per-user 免管理员安装）。
 本仓库不产出、不分发 MSIX。
 
-**📦 直接下载安装**：[Releases → v1.0.0](https://github.com/phfqy/scope-recall-win/releases/latest)
-（`ScopeRecallWin-Setup-1.0.0.exe`，16.4 MB，含安装说明与 SHA256）
+**📦 直接下载安装**：[Releases → v1.1.0](https://github.com/phfqy/scope-recall-win/releases/latest)
+（`ScopeRecallWin-Setup-1.1.0.exe`，含安装说明与 SHA256）
 
 > 本目录是 **P0 骨架**：可打开、可导航、主题可切换，服务层为接口/占位实现。
 > P1（视图与交互）、P2（读写数据通道）、P3（runtime-config 编辑器 + worker 启停）、
@@ -31,6 +31,12 @@ Scope Recall v3 记忆核心的 Windows 桌面管理控制台。**WinUI 3（Wind
 >
 > 2026-10-13 安装轮：分发形态锁定 unpackaged + Inno Setup。移除 MSIX 打包链
 > （Package.appxmanifest / install_msix.ps1 / MSIX 磁贴图标），自启改注册表 Run key 方案。
+>
+> 2026-10-13 功能轮（v1.1.0）：**18 视图全部接真实可用功能** —— 只读直连
+> memory.sqlite3（Mode=ReadOnly + query_only），官方 CLI 编排部署/升级/备份/诊断/
+> retry/attach 等写操作，runtime-config 大模型配置 + 凭据管理器，Agent 链接状态三维校验；
+> 侧边栏补副标题/选中指示条/视图缓存/⌘K 可用化。启动方式改为显式 Bootstrap
+> （修复 self-contained 下 CoreMessagingXP fail-fast）。
 
 ## 安装（Windows，免管理员）
 
@@ -65,19 +71,26 @@ winget install Microsoft.DotNet.SDK.8
 # 2. 构建（x64，unpackaged）
 dotnet build scope-recall-win.csproj -p:Platform=x64
 
-# 3. 发布自包含 unpackaged 产物（内置 Windows App SDK 运行时）
+# 3. 发布 unpackaged 产物（框架依赖模式，依赖本机 Windows App Runtime 1.8）
 dotnet publish scope-recall-win.csproj -p:Platform=x64 -c Release -r win-x64 `
-  -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true `
-  -o ..\..\publish\run
+  -p:WindowsAppSDKSelfContained=false -o ..\..\publish\run
+
+# 4. 补齐 XAML 编译产物（RID publish 不会复制 .xbf/.pri，缺失会启动即崩）
+#    把 bin\x64\Release\net8.0-windows10.0.19041.0\win-x64 下的
+#    *.pri（→ 输出根）与 **\*.xbf（保持相对路径）复制进 ..\..\publish\run
 ```
 
 > ⚠️ **WindowsAppSDK 版本**：工程锁定 `Microsoft.WindowsAppSDK 1.8.260921001`（1.x 末代稳定版）。
 > 1.6 的外部 `XamlCompiler.exe` 在部分环境被安全策略静默拦截（exit 1 无输出），1.7+ 的
 > in-proc XAML 编译已修复该问题——升级路径即此。
 
-> ⚠️ **unpackaged 注意**：csproj 已设 `WindowsPackageType=None` +
-> `WindowsAppSdkBootstrapInitialize`（进程启动时先激活 Windows App Runtime 再进 XAML）。
-> 缺它以普通 exe 直接运行会 `0xC000027B` fail-fast（try/catch 捕不到）。
+> ⚠️ **unpackaged 三个硬约束**（均为实机踩坑结论）：
+> 1. `WindowsPackageType=None`，Windows App Runtime 由 `Program.cs` 显式
+>    `Bootstrap.TryInitialize` 激活（不用自动注入的 `WindowsAppSdkBootstrapInitialize`）；
+> 2. 必须用**框架依赖**模式（`WindowsAppSDKSelfContained=false`）——self-contained
+>    在本机会以 `CoreMessagingXP.dll` 触发 fail-fast（`0xC0000602`）；
+> 3. 发布后必须手动补齐 `.xbf` / `.pri`（见上面第 4 步，缺失则启动即崩）。
+>    目标机需已安装 Windows App Runtime 1.8（随 Release 提供依赖包）。
 
 ### 从源码制作安装包（Inno Setup 6）
 

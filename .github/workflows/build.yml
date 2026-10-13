@@ -54,11 +54,26 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Publish unpackaged (self-contained, x64)
+      - name: Publish unpackaged (framework-dependent, x64)
         run: >
           dotnet publish scope-recall-win.csproj -p:Platform=x64 -c Release -r win-x64
-          -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true
+          -p:WindowsAppSDKSelfContained=false
           -o installer/publish/run
+
+      - name: Copy XAML artifacts (.xbf / .pri not copied by RID publish)
+        shell: pwsh
+        run: |
+          $tfm = "net8.0-windows10.0.19041.0"
+          $src = "bin\x64\Release\$tfm\win-x64"
+          $dst = "installer\publish\run"
+          Copy-Item "$src\*.pri" $dst -Force
+          Get-ChildItem $src -Recurse -Filter *.xbf | ForEach-Object {
+            $rel = $_.FullName.Substring((Resolve-Path $src).Path.Length + 1)
+            $target = Join-Path $dst $rel
+            New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
+            Copy-Item $_.FullName $target -Force
+          }
+          Write-Host ("xbf copied: " + (Get-ChildItem $dst -Recurse -Filter *.xbf).Count)
 
       - name: Install Inno Setup
         shell: pwsh
@@ -76,5 +91,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: setup-exe-x64
-          path: installer/out/ScopeRecallWin-Setup-1.0.0.exe
+          path: installer/out/ScopeRecallWin-Setup-1.1.0.exe
           if-no-files-found: error

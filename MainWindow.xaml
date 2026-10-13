@@ -8,7 +8,8 @@
          导航用 Grid/StackPanel/Button 自建，而非 NavigationView ——
          WinUI 3 的 NavigationView 在 unpackaged 形态（桌面 exe 安装版，
          WindowsPackageType=None）下只要承载 Content 就 fail-fast（0xC000027B），
-         应用根本起不来。自建导航在 packaged / unpackaged 两种形态下行为一致。 -->
+         应用根本起不来。自建导航在 packaged / unpackaged 两种形态下行为一致。
+         导航项结构：选中指示条 + 图标 + 主标签 + 副标题（详情摘要）+ 状态角标。 -->
     <Grid x:Name="RootGrid" Background="{StaticResource WindowBackgroundBrush}">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="236" />
@@ -45,15 +46,28 @@
             </ContentControl.ContentTransitions>
         </ContentControl>
 
-        <!-- ⌘K 命令面板浮层（Acrylic），Ctrl+K 唤起：P1 实现完整交互 -->
+        <!-- ⌘K 命令面板浮层（Acrylic），Ctrl+K 唤起：输入过滤 + ↑↓ 选择 + Enter 跳转 + Esc 关闭 -->
         <Grid x:Name="PaletteOverlay" Grid.ColumnSpan="2" Visibility="Collapsed" Background="#33000000">
             <Grid MaxWidth="560" VerticalAlignment="Top" Margin="0,80,0,0">
                 <Border Background="{StaticResource AcrylicPanelBrush}" CornerRadius="8"
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
                     <StackPanel>
                         <TextBox x:Name="PaletteInput" PlaceholderText="搜索视图、操作或记忆…（↑↓ 选择，Enter 执行，Esc 关闭）"
-                                 Padding="14,10" Background="Transparent" BorderThickness="0" />
-                        <ListView x:Name="PaletteList" MaxHeight="320" IsItemClickEnabled="True" />
+                                 Padding="14,10" Background="Transparent" BorderThickness="0"
+                                 KeyDown="PaletteInput_KeyDown" TextChanged="PaletteInput_TextChanged" />
+                        <ListView x:Name="PaletteList" MaxHeight="320" IsItemClickEnabled="True"
+                                  ItemClick="PaletteList_ItemClick" SelectionMode="Single">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Padding="4,6">
+                                        <TextBlock Text="{Binding Label}" FontSize="13.5" />
+                                        <TextBlock Text="{Binding Tip}" FontSize="11"
+                                                   Foreground="{StaticResource MutedTextBrush}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
                     </StackPanel>
                 </Border>
             </Grid>

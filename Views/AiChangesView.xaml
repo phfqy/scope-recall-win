@@ -3,20 +3,57 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:ScopeRecallWin.Controls">
-    <Grid Padding="26" RowSpacing="12">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-        <TextBlock Text="AI 改动" Style="{StaticResource PageTitleTextStyle}" />
-        <TextBlock Grid.Row="1" Text="candidate_lifecycle 状态迁移逐条（时间/类型/目标 claim/状态迁移/qualification_reason/置信度/来源 work_item）+ 过滤 + 导出 Markdown/JSON。只列模型管线改动，人工变更在审计页。对应附 1 第 2 项。"
-                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
-        <controls:Card Grid.Row="2" Title="待 P1/P2 实现">
-            <StackPanel Spacing="8">
-                <TextBlock Text="• 数据源：work_items（kind evaluate_candidate/consolidate）+ candidate_lifecycle + claim_versions 只读联合查询" Style="{StaticResource MonoTextStyle}" />
-                <TextBlock Text="• 状态迁移：proposed→active 等 + qualification_reason + 置信度条" Style="{StaticResource MonoTextStyle}" />
-            </StackPanel>
-        </controls:Card>
+
+    <Grid>
+        <Grid Padding="26" MaxWidth="1000">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="AI 改动" Style="{StaticResource PageTitleTextStyle}" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}"
+                               Text="候选生命周期留痕（candidate_lifecycle）：端侧模型每次记忆改动的处理状态与原因。点击行查看关联证据。" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="BtnRefresh" Content="刷新" Click="BtnRefresh_Click" />
+                    <Button x:Name="BtnExport" Content="导出 JSON" Click="BtnExport_Click" />
+                </StackPanel>
+            </Grid>
+
+            <Grid Grid.Row="1" Margin="0,12,0,8" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ComboBox Grid.Column="0" x:Name="CmbState" Width="200" SelectedIndex="0">
+                    <ComboBoxItem Content="全部状态" />
+                    <ComboBoxItem Content="waiting_evidence" />
+                    <ComboBoxItem Content="pending_evaluation" />
+                    <ComboBoxItem Content="resolved" />
+                    <ComboBoxItem Content="archived" />
+                    <ComboBoxItem Content="dormant" />
+                </ComboBox>
+                <Button Grid.Column="1" x:Name="BtnApply" Content="筛选" Click="BtnApply_Click" />
+            </Grid>
+
+            <Grid Grid.Row="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" x:Name="TxtTotal" Style="{StaticResource PageDescTextStyle}" Margin="0,0,0,6" />
+                <controls:SimpleTable Grid.Row="1" x:Name="Table" EmptyText="没有匹配的候选记录。" />
+            </Grid>
+        </Grid>
+
+        <controls:DetailDrawer x:Name="Drawer" />
     </Grid>
 </UserControl>

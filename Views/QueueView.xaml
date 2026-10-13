@@ -3,21 +3,68 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:ScopeRecallWin.Controls">
-    <Grid Padding="26" RowSpacing="12">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-        <TextBlock Text="队列" Style="{StaticResource PageTitleTextStyle}" />
-        <TextBlock Grid.Row="1" Text="work_items 列表（kind evaluate_candidate / consolidate / embed、状态、最后错误、pending_error_counts、项目/分支分区）+ 失败重试（retry-failures 预览与执行、按 id 重试 worker_entry --retry-failed）+ 每日限额状态（daily_work_limit）。对应附 1 第 2、25 项。"
-                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
-        <controls:Card Grid.Row="2" Title="待 P1 实现">
-            <StackPanel Spacing="8">
-                <TextBlock Text="• 队列表：kind / 状态 / 最后错误 / pending_error_counts（上游口径）" Style="{StaticResource MonoTextStyle}" />
-                <TextBlock Text="• 重试：retry-failures --include-terminal / worker_entry --retry-failed（每 release 一次 re-look）" Style="{StaticResource MonoTextStyle}" />
-                <TextBlock Text="• 限额：daily_work_limit（0=不限）、storage_budget 状态" Style="{StaticResource MonoTextStyle}" />
-            </StackPanel>
-        </controls:Card>
+
+    <Grid>
+        <Grid Padding="26" MaxWidth="1100">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="队列" Style="{StaticResource PageTitleTextStyle}" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}"
+                               Text="后台任务（embed / consolidate / evaluate_candidate / rebuild_projection）。失败与待处理置顶显示，点击行查看错误详情。" />
+                </StackPanel>
+                <Button Grid.Column="1" x:Name="BtnRefresh" Content="刷新" Click="BtnRefresh_Click"
+                        VerticalAlignment="Center" />
+            </Grid>
+
+            <Grid Grid.Row="1" Margin="0,12,0,12" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <ComboBox Grid.Column="0" x:Name="CmbState" Width="130" SelectedIndex="0">
+                    <ComboBoxItem Content="全部状态" />
+                    <ComboBoxItem Content="failed" />
+                    <ComboBoxItem Content="pending" />
+                    <ComboBoxItem Content="done" />
+                    <ComboBoxItem Content="obsolete" />
+                </ComboBox>
+                <ComboBox Grid.Column="1" x:Name="CmbType" Width="170" SelectedIndex="0">
+                    <ComboBoxItem Content="全部类型" />
+                    <ComboBoxItem Content="embed" />
+                    <ComboBoxItem Content="consolidate" />
+                    <ComboBoxItem Content="evaluate_candidate" />
+                    <ComboBoxItem Content="rebuild_projection" />
+                </ComboBox>
+                <Button Grid.Column="2" x:Name="BtnApply" Content="筛选" Click="BtnApply_Click"
+                        HorizontalAlignment="Left" />
+            </Grid>
+
+            <Grid Grid.Row="2" Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" x:Name="TxtTotal" Style="{StaticResource PageDescTextStyle}"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="1" x:Name="BtnRetry" Content="重试失败项"
+                        Style="{StaticResource DangerButtonStyle}" Click="BtnRetry_Click" />
+            </Grid>
+
+            <controls:SimpleTable Grid.Row="3" x:Name="Table" EmptyText="没有匹配的任务。" />
+        </Grid>
+
+        <controls:DetailDrawer x:Name="Drawer" />
     </Grid>
 </UserControl>

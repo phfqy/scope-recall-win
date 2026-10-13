@@ -3,21 +3,55 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:ScopeRecallWin.Controls">
-    <Grid Padding="26" RowSpacing="12">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-        <TextBlock Text="设置" Style="{StaticResource PageTitleTextStyle}" />
-        <TextBlock Grid.Row="1" Text="主题（暗/亮跟随系统 + 手动）、自动刷新开关+间隔、巡检计划（5/15/60 分钟 + 积压阈值 + 系统通知）、开机自启开关（MSIX StartupTask）、通知点击聚焦对应视图。对应附 1 第 31 项。"
-                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
-        <controls:Card Grid.Row="2" Title="待 P1/P4 实现">
-            <StackPanel Spacing="8">
-                <TextBlock Text="• 主题切换：RootGrid.RequestedTheme + 持久化（本地配置文件，参考 Theme/ 双字典）" Style="{StaticResource MonoTextStyle}" />
-                <TextBlock Text="• 开机自启：Package.appxmanifest 已声明 ScopeRecallWinStartup（Enabled=false），P4 实现开关注册" Style="{StaticResource MonoTextStyle}" />
-                <TextBlock Text="• 托盘常驻：关闭最小化到托盘（Services/TrayService 占位，P4 实现）" Style="{StaticResource MonoTextStyle}" />
-            </StackPanel>
-        </controls:Card>
-    </Grid>
+
+    <ScrollViewer>
+        <StackPanel Padding="26" Spacing="14" MaxWidth="860">
+            <TextBlock Text="设置" Style="{StaticResource PageTitleTextStyle}" />
+            <TextBlock Style="{StaticResource PageDescTextStyle}"
+                       Text="更新模式、开机自启与数据位置。主题切换与托盘常驻随后续版本提供。" />
+
+            <!-- ============ 更新模式 ============ -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="控制台更新" />
+
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="自动：检查到新版本后下载并静默替换安装（升级前提示，失败不改动）。仅通知：只提示，由你手动打开下载页安装。" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <RadioButton x:Name="RadioAuto" Content="自动（下载并静默替换）"
+                                     GroupName="UpdateMode" Checked="UpdateMode_Changed" />
+                        <RadioButton x:Name="RadioNotify" Content="仅通知（手动下载）"
+                                     GroupName="UpdateMode" Checked="UpdateMode_Changed" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="TxtUpdateChannel" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 开机自启 ============ -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="开机自启" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="unpackaged 安装版通过注册表 Run key（HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run）实现，免管理员、仅对当前用户生效；卸载时由卸载器清理。" />
+                    <ToggleSwitch x:Name="ToggleStartup" Header="开机自动启动"
+                                  Toggled="ToggleStartup_Toggled" />
+                    <TextBlock x:Name="TxtStartupState" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 数据位置 ============ -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="记忆库位置" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="当前生效的记忆库根目录。修改后重启应用生效；可在「安装」页重新选择。" />
+                    <TextBlock x:Name="TxtMemoryRoot" Style="{StaticResource MonoTextStyle}" TextWrapping="Wrap" />
+                    <Button x:Name="BtnOpenDataDir" Content="打开设置目录" Click="BtnOpenDataDir_Click" />
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>
