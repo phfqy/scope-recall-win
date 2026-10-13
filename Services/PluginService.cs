@@ -70,7 +70,7 @@ public sealed record PluginInstallResult(
     IReadOnlyList<string> Steps,
     string? Error);
 
-public sealed record PluginEntry(string Entry, string Host, string Home, string? Python, bool Alive);
+public sealed record PluginEntry(string Entry, string Host, string Home, string? Python, bool Alive, string? DisplayName = null);
 
 public sealed record PluginUpgradeRequest(
     string Root,
@@ -218,15 +218,42 @@ public sealed class PluginService : IPluginService
         try
         {
             using var doc = JsonDocument.Parse(File.ReadAllText(jsonPath));
-            if (doc.RootElement.TryGetProperty("entries", out var entries)
-                && entries.ValueKind == JsonValueKind.Object)
+            if (doc.RootElement.TryGetProperty("entries", out var entries))
             {
-                foreach (var prop in entries.EnumerateObject())
+                // 上游结构为数组：[{"entry_id": "dsh", "host": "dsh", "home": "…",
+                //                  "display_name": "DeepSeek Harness", "python_executable": "…"}]
+                // 早期误按对象解析导致 entry 列表恒为空（连带 Agent 链接状态/entries 台账/
+                // 诊断/升级停机全部静默失效），此处数组与对象两种形态都兼容。
+                if (entries.ValueKind == JsonValueKind.Array)
                 {
-                    var home = prop.Value.TryGetProperty("home", out var h) ? h.GetString() ?? "" : "";
-                    var host = prop.Value.TryGetProperty("host", out var ho) ? ho.GetString() ?? "" : "";
-                    var python = prop.Value.TryGetProperty("python", out var p) ? p.GetString() : null;
-                    result.Add(new PluginEntry(prop.Name, host, home, python, Directory.Exists(home)));
+                    foreach (var el in entries.EnumerateArray())
+                    {
+                        var id = Str(el, "entry_id");
+                        if (id.Length == 0)
+                        {
+                            continue;
+                        }
+                        result.Add(new PluginEntry(
+                            id,
+                            Str(el, "host"),
+                            Str(el, "home"),
+                            Str(el, "python_executable") is { Length: > 0 } pe ? pe : Nullable(Str(el, "python")),
+                            Directory.Exists(Str(el, "home")),
+                            Nullable(Str(el, "display_name"))));
+                    }
+                }
+                else if (entries.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var prop in entries.EnumerateObject())
+                    {
+                        result.Add(new PluginEntry(
+                            prop.Name,
+                            Str(prop.Value, "host"),
+                            Str(prop.Value, "home"),
+                            Nullable(Str(prop.Value, "python")),
+                            Directory.Exists(Str(prop.Value, "home")),
+                            Nullable(Str(prop.Value, "display_name"))));
+                    }
                 }
             }
         }
@@ -235,34 +262,47 @@ public sealed class PluginService : IPluginService
             // installation.json 损坏时返回空列表
         }
 
-        // alive 探测：resident 端点注册表存在即视为最近活跃
+        // 常驻服务探测：端点注册表记录形如
+        //   %LOCALAPPDATA%\scope-recall\hook-endpoints\<sha16(home)>\<pid>.json
+        //   {"host": "workbuddy", "port": 53030, "pid": 16056, "version": "3.10.2", "resident": true}
+        // 注意：记录里**没有 home 字段**，早期按 home 匹配导致 Alive 恒为 false；
+        // 这里改为按 host 匹配 + 校验 pid 进程是否仍存活（与 AgentLinkService 口径一致）。
         try
         {
+            var endpoints = new List<(string Host, int Pid)>();
             var endpointDir = PathDiscovery.HookEndpointsDir;
             if (Directory.Exists(endpointDir))
             {
-                var aliveHomes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var f in Directory.EnumerateFiles(endpointDir, "*.json", SearchOption.AllDirectories))
                 {
                     try
                     {
                         using var d = JsonDocument.Parse(File.ReadAllText(f));
-                        if (d.RootElement.TryGetProperty("home", out var hh))
+                        var host = d.RootElement.TryGetProperty("host", out var hh) ? hh.GetString() ?? "" : "";
+                        var pid = d.RootElement.TryGetProperty("pid", out var pp) ? pp.GetInt32() : 0;
+                        if (host.Length > 0 && pid > 0)
                         {
-                            aliveHomes.Add(hh.GetString() ?? "");
+                            endpoints.Add((host, pid));
                         }
                     }
-                    catch { }
+                    catch
+                    {
+                        // 单个端点文件损坏时跳过
+                    }
                 }
-                for (int i = 0; i < result.Count; i++)
-                {
-                    result[i] = result[i] with { Alive = aliveHomes.Contains(result[i].Home) };
-                }
+            }
+
+            for (int i = 0; i < result.Count; i++)
+            {
+                var host = result[i].Host;
+                var alive = endpoints.Any(e =>
+                    string.Equals(e.Host, host, StringComparison.OrdinalIgnoreCase) && IsProcessAlive(e.Pid));
+                result[i] = result[i] with { Alive = alive };
             }
         }
         catch
         {
-            // 注册表不可读时保持 Directory.Exists 判定
+            // 注册表不可读时保持默认（未运行）
         }
 
         await Task.CompletedTask.ConfigureAwait(false);
@@ -705,6 +745,35 @@ public sealed class PluginService : IPluginService
         }
         return results;
     }
+
+    /// <summary>进程是否仍存活（用于常驻服务状态判定）。</summary>
+    private static bool IsProcessAlive(int pid)
+    {
+        if (pid <= 0)
+        {
+            return false;
+        }
+        try
+        {
+            using var proc = System.Diagnostics.Process.GetProcessById(pid);
+            return !proc.HasExited;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>读取 JSON 对象里的字符串字段（缺失返回空串）。</summary>
+    private static string Str(JsonElement element, string name)
+        => element.ValueKind == JsonValueKind.Object
+           && element.TryGetProperty(name, out var value)
+           && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? ""
+            : "";
+
+    /// <summary>空串转 null（用于可选字段）。</summary>
+    private static string? Nullable(string value) => value.Length == 0 ? null : value;
 
     private static string? FirstLine(string text)
     {

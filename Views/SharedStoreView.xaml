@@ -1,16 +1,16 @@
 <UserControl
     x:Class="ScopeRecallWin.Views.SharedStoreView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:controls="using:ScopeRecallWin.Controls">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <ScrollViewer>
-        <StackPanel Padding="26" Spacing="14" MaxWidth="960">
+        <StackPanel Padding="26" Spacing="14" MaxWidth="900">
+
             <TextBlock Text="共享存储" Style="{StaticResource PageTitleTextStyle}" />
             <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
-                       Text="一个共享记忆库 + 多个 Agent entry（每个宿主 attach 一次）。attach 后各宿主写入同一记忆库，权限按其原有 grants 继承。" />
+                       Text="本机所有 AI 助手共用同一个记忆库：它们各自作为一个「成员」接入，记忆互通、权限各按原有设置。" />
 
-            <!-- 当前库信息 -->
+            <!-- ============ 当前共享库 ============ -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
                     <Grid ColumnSpacing="10">
@@ -22,61 +22,85 @@
                                    Text="当前共享库" VerticalAlignment="Center" />
                         <Button Grid.Column="1" x:Name="BtnRefresh" Content="刷新" Click="BtnRefresh_Click" />
                     </Grid>
-                    <TextBlock x:Name="TxtRoot" Style="{StaticResource MonoTextStyle}" TextWrapping="Wrap" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Border x:Name="StoreLed" Width="10" Height="10" CornerRadius="5"
+                                Background="#8A8A92" VerticalAlignment="Center" />
+                        <TextBlock x:Name="TxtRoot" Style="{StaticResource MonoTextStyle}" TextWrapping="Wrap"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
                     <TextBlock x:Name="TxtState" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
-                    <ListView x:Name="EntryList" MaxHeight="200">
+
+                    <ListView x:Name="EntryList" MaxHeight="240" SelectionMode="None">
                         <ListView.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Padding="4,5">
-                                    <TextBlock Text="{Binding Title}" FontSize="12.5" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding Meta}" FontSize="11"
-                                               Foreground="{StaticResource MutedTextBrush}"
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
+                                <Border Background="{StaticResource Surface2Brush}" CornerRadius="6"
+                                        Padding="10,8" Margin="0,3">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Meta}" FontSize="11.5"
+                                                   Foreground="{StaticResource MutedTextBrush}"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
                 </StackPanel>
             </Border>
 
-            <!-- attach 向导 -->
+            <!-- ============ 接入新成员 ============ -->
             <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Spacing="10">
-                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="attach 新 entry（让某个宿主接入共享库）" />
+                <StackPanel Spacing="12">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="接入新成员" />
                     <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
-                               Text="attach 会为该宿主的 home 建立 entry，并把它的记忆并入共享库。需要宿主已安装插件且能让出原库（自动备份）。" />
+                               Text="把一个 AI 助手接进共享库。接入时它原有的记忆会并入共享库（原库会自动备份），之后它的新记忆也写进共享库。" />
 
-                    <ComboBox x:Name="CmbHost" Header="host" Width="240" SelectedIndex="0">
-                        <ComboBoxItem Content="dsh" />
-                        <ComboBoxItem Content="workbuddy" />
-                        <ComboBoxItem Content="codex" />
-                        <ComboBoxItem Content="claude-code" />
-                        <ComboBoxItem Content="hermes" />
+                    <ComboBox x:Name="CmbHost" Header="该助手属于哪一类（宿主类型）"
+                              HorizontalAlignment="Stretch" SelectionChanged="CmbHost_SelectionChanged">
+                        <ComboBoxItem Content="WorkBuddy（本机 .workbuddy）" Tag="workbuddy" />
+                        <ComboBoxItem Content="WorkBuddy AI（本机 .workbuddy-ai）" Tag="workbuddy-ai" />
+                        <ComboBoxItem Content="DeepSeek Harness （DSH）" Tag="dsh" />
+                        <ComboBoxItem Content="Hermes" Tag="hermes" />
+                        <ComboBoxItem Content="Codex" Tag="codex" />
+                        <ComboBoxItem Content="Claude Code" Tag="claude-code" />
                     </ComboBox>
-                    <TextBox x:Name="TxtEntryId" Header="entry（2..32 位小写字母/数字/连字符）"
-                             PlaceholderText="workbuddy" />
-                    <TextBox x:Name="TxtDisplayName" Header="display_name（≤32 字符）"
-                             PlaceholderText="WorkBuddy" />
-                    <TextBox x:Name="TxtInstanceRoot" Header="instance_root（宿主 home，如 C:\Users\me\.workbuddy）"
-                             PlaceholderText="C:\Users\me\.workbuddy" />
-                    <TextBox x:Name="TxtAttachAuth" Header="授权句（本人书写，≥6 字且点明 entry）" />
+
+                    <TextBox x:Name="TxtEntryId" Header="成员标识（2~32 位小写字母/数字/连字符，用于内部区分）"
+                             PlaceholderText="例如 workbuddy" />
+                    <TextBox x:Name="TxtDisplayName" Header="显示名称（≤32 字符，界面上展示的名字）"
+                             PlaceholderText="例如 WorkBuddy" />
+                    <TextBox x:Name="TxtInstanceRoot" Header="该助手的数据目录（它的配置与记忆所在位置）"
+                             PlaceholderText="例如 C:\Users\ma314\.workbuddy" />
+
+                    <TextBlock x:Name="TxtAttachHint" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+
+                    <CheckBox x:Name="ChkAttachConfirm"
+                              Content="我确认把该助手接入共享库（其原有记忆将并入共享库，原库自动备份）" />
 
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="BtnAttach" Content="执行 attach"
-                                Style="{StaticResource DangerButtonStyle}" Click="BtnAttach_Click" />
+                        <Button x:Name="BtnAttach" Content="接入共享库"
+                                Style="{StaticResource AccentButtonStyle}" Click="BtnAttach_Click" />
                     </StackPanel>
-                    <TextBlock x:Name="TxtAttachState" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+
+                    <TextBlock x:Name="TxtAttachState" TextWrapping="Wrap" FontSize="12.5"
+                               Foreground="{StaticResource MutedTextBrush}" />
                 </StackPanel>
             </Border>
 
-            <!-- init-shared 说明 -->
+            <!-- ============ 说明 ============ -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
-                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="新建共享库（init-shared）" />
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="需要了解的几点" />
                     <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
-                               Text="在所选根目录创建全新的共享记忆库（生成 installation.json）。请在「安装」页选择目录后执行部署；已存在库时走复用模式，不会重建。" />
+                               Text="• 共享库里的记忆对所有已接入的助手可见（仍受各自权限限制）。" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="• 接入前请先确认该助手已安装记忆插件，并已停止写入（避免数据冲突）。" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="• 彻底新建一个共享库请到「安装」页选择目录后部署，不要在已有库上重复初始化。" />
                 </StackPanel>
             </Border>
+
         </StackPanel>
     </ScrollViewer>
 </UserControl>

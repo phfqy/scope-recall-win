@@ -5,6 +5,8 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using ScopeRecallWin.Helpers;
 using ScopeRecallWin.Infrastructure;
 using ScopeRecallWin.Services;
 
@@ -12,111 +14,177 @@ namespace ScopeRecallWin.Views;
 
 public sealed partial class SharedStoreView : UserControl
 {
+    /// <summary>接入确认语句（勾选即代表本人确认，等价于手写授权句）。</summary>
+    private const string AttachConfirmSentence = "我确认把该助手接入共享记忆库";
+
+    /// <summary>宿主类型 → 默认数据目录（选中即自动填写，可改）。</summary>
+    private static readonly Dictionary<string, (string Dir, string Label, string Sample)> HostDefaults = new()
+    {
+        ["workbuddy"] = (".workbuddy", "WorkBuddy", "workbuddy"),
+        ["workbuddy-ai"] = (".workbuddy-ai", "WorkBuddy AI", "workbuddy-ai"),
+        ["dsh"] = (".dsh", "DeepSeek Harness", "dsh"),
+        ["hermes"] = ("", "Hermes", "hermes"),
+        ["codex"] = (".codex", "Codex", "codex"),
+        ["claude-code"] = (".claude", "Claude Code", "claude-code"),
+    };
+
     private readonly IPluginService? _plugin;
-    private bool _loaded;
 
     public SharedStoreView()
     {
         InitializeComponent();
         _plugin = ServiceLocator.Get<IPluginService>();
-        Loaded += SharedStoreView_Loaded;
+        Loaded += (_, _) => UiThread.Run(DispatcherQueue, "SharedStoreView.Loaded", LoadAsync);
     }
 
-    private void SharedStoreView_Loaded(object sender, RoutedEventArgs e)
+    private async Task LoadAsync()
     {
-        UiThread.Run(DispatcherQueue, "SharedStoreView.SharedStoreView_Loaded", async () =>
+        await ReloadAsync();
+        if (CmbHost.SelectedItem is null)
         {
-            if (_loaded)
-            {
-                return;
-            }
-            _loaded = true;
-            await ReloadAsync();
-
-        });
+            CmbHost.SelectedIndex = 0;
+        }
     }
+
+    // ---------- 当前共享库 ----------
 
     private async Task ReloadAsync()
     {
         var root = PathDiscovery.FindMemoryRoot(App.Settings);
-        TxtRoot.Text = root ?? "未找到共享库（请先在「安装」页选择部署目录）";
+        TxtRoot.Text = root is null ? "未找到共享库" : $"位置：{root}";
+        StoreLed.Background = root is null
+            ? StatusVisuals.BrushOf("failed")
+            : StatusVisuals.BrushOf("ok");
+
         if (root is null || _plugin is null)
         {
-            TxtState.Text = "";
+            TxtState.Text = "请先到「安装」页选择部署目录并完成部署。";
+            TxtState.Foreground = StatusVisuals.BrushOf("failed");
+            EntryList.ItemsSource = null;
             return;
         }
 
         var entries = (await _plugin.ListEntriesAsync(root)).ToList();
-        EntryList.ItemsSource = entries.Select(en => new
+        EntryList.ItemsSource = entries.Select(en =>
         {
-            Title = en.Entry,
-            Meta = $"host {en.Host} · home {en.Home} · python {en.Python ?? "（宿主自带）"} · 目录存在 {(en.Alive ? "是" : "否")}",
+            var name = string.IsNullOrWhiteSpace(en.DisplayName) ? en.Entry : $"{en.DisplayName}（{en.Entry}）";
+            var parts = new List<string> { $"类型：{en.Host}" };
+            if (en.Home is { Length: > 0 })
+            {
+                // 注意：PluginEntry.Alive 表示 resident 常驻服务是否在跑，与目录存在与否是两回事
+                var homeExists = Directory.Exists(en.Home);
+                parts.Add($"数据目录：{en.Home}（{(homeExists ? "存在" : "不存在")}）");
+            }
+            parts.Add(en.Alive ? "常驻服务：运行中" : "常驻服务：未运行（首次使用时自动启动）");
+            if (en.Python is { Length: > 0 })
+            {
+                parts.Add("使用共享运行环境");
+            }
+            return new { Title = name, Meta = string.Join(" · ", parts) };
         }).ToList();
+
         TxtState.Text = entries.Count == 0
-            ? "当前共享库还没有 entry：可在下方 attach 宿主。"
-            : $"共 {entries.Count} 个 entry。";
+            ? "这个共享库还没有接入任何助手，可在下方接入。"
+            : $"已接入 {entries.Count} 个助手（记忆互通、权限各按原有设置）。";
+        TxtState.Foreground = StatusVisuals.BrushOf(entries.Count == 0 ? "pending" : "ok");
     }
 
     private void BtnRefresh_Click(object sender, RoutedEventArgs e)
-        => UiThread.Run(DispatcherQueue, "SharedStoreView.BtnRefresh_Click", ReloadAsync);
+        => UiThread.Run(DispatcherQueue, "SharedStoreView.Refresh", ReloadAsync);
 
-    // ---------- attach（写操作，CLI + 护栏） ----------
+    // ---------- 表单 ----------
+
+    private void CmbHost_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CmbHost.SelectedItem is not ComboBoxItem { Tag: string tag }
+            || !HostDefaults.TryGetValue(tag, out var preset))
+        {
+            return;
+        }
+
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        TxtEntryId.Text = preset.Sample;
+        TxtDisplayName.Text = preset.Label;
+        TxtInstanceRoot.Text = preset.Dir.Length == 0
+            ? ""      // Hermes 的数据目录因安装方式而异，留空由用户填写
+            : System.IO.Path.Combine(home, preset.Dir);
+        UpdateAttachHint(tag);
+    }
+
+    private void UpdateAttachHint(string hostTag)
+    {
+        TxtAttachHint.Text = hostTag switch
+        {
+            "workbuddy" => "提示：WorkBuddy 的数据目录通常是 C:\\Users\\<用户名>\\.workbuddy",
+            "workbuddy-ai" => "提示：WorkBuddy AI 的数据目录通常是 C:\\Users\\<用户名>\\.workbuddy-ai",
+            "dsh" => "提示：DeepSeek Harness 的数据目录通常是 C:\\Users\\<用户名>\\.dsh",
+            "hermes" => "提示：Hermes 的数据目录取决于安装方式（请在 Hermes 设置中确认后填写）",
+            "codex" => "提示：Codex 的数据目录通常是 C:\\Users\\<用户名>\\.codex",
+            _ => "提示：Claude Code 的数据目录通常是 C:\\Users\\<用户名>\\.claude",
+        };
+    }
+
+    // ---------- 接入（写操作：CLI + 勾选确认） ----------
 
     private void BtnAttach_Click(object sender, RoutedEventArgs e)
-    {
-        UiThread.Run(DispatcherQueue, "SharedStoreView.BtnAttach_Click", async () =>
+        => UiThread.Run(DispatcherQueue, "SharedStoreView.Attach", async () =>
         {
             var root = PathDiscovery.FindMemoryRoot(App.Settings);
             if (root is null)
             {
-                TxtAttachState.Text = "未找到共享库根目录。";
+                SetAttachState("未找到共享库，请先到「安装」页完成部署。", "failed");
                 return;
             }
             var venvPython = PathDiscovery.FindVenvPython(root);
             if (venvPython is null)
             {
-                TxtAttachState.Text = "未找到共享 venv。";
+                SetAttachState("未找到共享运行环境（shared-venv），无法执行接入。", "failed");
                 return;
             }
 
-            var host = ((ComboBoxItem)CmbHost.SelectedItem)?.Content?.ToString() ?? "";
+            var host = (CmbHost.SelectedItem as ComboBoxItem)?.Tag as string ?? "";
             var entry = (TxtEntryId.Text ?? "").Trim();
             var displayName = (TxtDisplayName.Text ?? "").Trim();
             var instanceRoot = (TxtInstanceRoot.Text ?? "").Trim();
-            var auth = (TxtAttachAuth.Text ?? "").Trim();
 
             if (!Regex.IsMatch(entry, "^[a-z0-9-]{2,32}$"))
             {
-                TxtAttachState.Text = "entry 需 2..32 位小写字母/数字/连字符。";
+                SetAttachState("成员标识需为 2~32 位小写字母、数字或连字符。", "failed");
                 return;
             }
             if (displayName.Length is < 1 or > 32)
             {
-                TxtAttachState.Text = "display_name 需 1..32 字符。";
+                SetAttachState("显示名称需为 1~32 个字符。", "failed");
                 return;
             }
-            if (instanceRoot.Length == 0 || !Directory.Exists(instanceRoot))
+            if (instanceRoot.Length == 0)
             {
-                TxtAttachState.Text = "instance_root 无效或不存在。";
+                SetAttachState("请填写该助手的数据目录。", "failed");
                 return;
             }
-            if (auth.Length < 6 || !auth.Contains(entry, StringComparison.Ordinal))
+            if (!Directory.Exists(instanceRoot))
             {
-                TxtAttachState.Text = "授权句需 ≥6 字且点明 entry（不代笔 / 不预填）。";
+                SetAttachState($"该数据目录不存在：{instanceRoot}（请确认路径是否正确）", "failed");
+                return;
+            }
+            if (ChkAttachConfirm.IsChecked != true)
+            {
+                SetAttachState("请先勾选确认框：需要你本人确认本次接入。", "pending");
                 return;
             }
 
             var dialog = new ContentDialog
             {
-                Title = "确认 attach",
+                Title = "确认接入共享库",
                 Content = new TextBlock
                 {
                     TextWrapping = TextWrapping.Wrap,
-                    Text = $"将执行：\nscope_recall.maintenance.cli attach --host {host} --instance-root \"{instanceRoot}\" " +
-                           $"--root \"{root}\" --entry {entry} --display-name \"{displayName}\"\n\n" +
-                           "该操作会把该宿主的原库并入共享库，请确认你本人了解本次操作。",
+                    Text = $"将把「{displayName}」接入当前共享库：\n\n" +
+                           $"• 成员标识：{entry}\n" +
+                           $"• 数据目录：{instanceRoot}\n\n" +
+                           "它原有的记忆会并入共享库（原库会自动备份），之后新记忆也写入共享库。",
                 },
-                PrimaryButtonText = "确认执行",
+                PrimaryButtonText = "确认接入",
                 CloseButtonText = "取消",
                 DefaultButton = ContentDialogButton.Close,
                 XamlRoot = XamlRoot,
@@ -126,22 +194,33 @@ public sealed partial class SharedStoreView : UserControl
                 return;
             }
 
-            TxtAttachState.Text = "正在执行 attach…";
-            var r = await ProcessRunner.RunAsync(
+            BtnAttach.IsEnabled = false;
+            SetAttachState("正在接入，请稍候…", "pending");
+
+            var result = await ProcessRunner.RunAsync(
                 venvPython,
                 $"-m scope_recall.maintenance.cli attach --host {host} --instance-root \"{instanceRoot}\" " +
                 $"--root \"{root}\" --entry {entry} --display-name \"{displayName}\"",
                 timeoutMs: 600_000);
 
-            TxtAttachState.Text = r.Success
-                ? $"attach 完成（exit 0）。\n{FirstLines(r.StdOut, 6)}"
-                : $"attach 失败（exit {r.ExitCode}）：{FirstLine(r.StdErr) ?? FirstLine(r.StdOut) ?? "未知错误"}";
-            if (r.Success)
+            if (result.Success)
             {
+                SetAttachState($"✓ 接入完成：「{displayName}」已加入共享库。", "ok");
                 await ReloadAsync();
             }
+            else
+            {
+                var reason = FirstLine(result.StdErr) ?? FirstLine(result.StdOut) ?? $"退出码 {result.ExitCode}";
+                SetAttachState($"✗ 接入失败：{reason}", "failed");
+            }
 
+            BtnAttach.IsEnabled = true;
         });
+
+    private void SetAttachState(string message, string state)
+    {
+        TxtAttachState.Text = message;
+        TxtAttachState.Foreground = StatusVisuals.BrushOf(state);
     }
 
     private static string? FirstLine(string text)
@@ -153,7 +232,4 @@ public sealed partial class SharedStoreView : UserControl
         var line = text.Split('\n')[0].Trim();
         return line.Length == 0 ? null : line;
     }
-
-    private static string FirstLines(string text, int count)
-        => string.IsNullOrWhiteSpace(text) ? "" : string.Join("\n", text.Split('\n').Take(count)).Trim();
 }
