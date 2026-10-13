@@ -1,0 +1,16 @@
+<UserControl
+    x:Class="ScopeRecallWin.Controls.StatusLed"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- 状态 LED 灯：诊断页逐项状态点。
+         动画：进入时淡入 + 向上位移（EntranceThemeTransition）；
+         后续可扩展为 Composition 呼吸灯（参考 MS Learn「Spring animations / Implicit animations」）。 -->
+    <Grid>
+        <Grid.Transitions>
+            <TransitionCollection>
+                <EntranceThemeTransition FromVerticalOffset="4" />
+            </TransitionCollection>
+        </Grid.Transitions>
+        <Ellipse x:Name="LedEllipse" Width="10" Height="10" Fill="{StaticResource InfoBrush}" />
+    </Grid>
+</UserControl>

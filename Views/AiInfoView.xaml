@@ -1,0 +1,23 @@
+<UserControl
+    x:Class="ScopeRecallWin.Views.AiInfoView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
+    <Grid Padding="26" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="AI 模型" Style="{StaticResource PageTitleTextStyle}" />
+        <TextBlock Grid.Row="1" Text="worker 状态（运行中/停止/最后心跳/退出码）、本次启动时间、今日统计（调用/延迟/评估候选/转正/待审/整合组数）、管线角色表（evaluate_candidate / consolidate / embed）、host_backpressure；硬边界声明（模型不执行 revise/forget/delete）。对应附 1 第 2、24 项。"
+                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+        <controls:Card Grid.Row="2" Title="待 P1/P3 实现">
+            <StackPanel Spacing="8">
+                <TextBlock Text="• 启停按钮：Services/WorkerService（Process 启停，优雅退出、超时强停）" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• 今日统计：work_items + candidate_lifecycle 只读聚合（P2 SQL）" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• 硬边界：✅ 评估/整合/重激活全留痕；⛔ 不物理删除、不留痕改动" Style="{StaticResource MonoTextStyle}" />
+            </StackPanel>
+        </controls:Card>
+    </Grid>
+</UserControl>

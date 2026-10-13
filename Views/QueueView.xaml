@@ -1,0 +1,23 @@
+<UserControl
+    x:Class="ScopeRecallWin.Views.QueueView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
+    <Grid Padding="26" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="队列" Style="{StaticResource PageTitleTextStyle}" />
+        <TextBlock Grid.Row="1" Text="work_items 列表（kind evaluate_candidate / consolidate / embed、状态、最后错误、pending_error_counts、项目/分支分区）+ 失败重试（retry-failures 预览与执行、按 id 重试 worker_entry --retry-failed）+ 每日限额状态（daily_work_limit）。对应附 1 第 2、25 项。"
+                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+        <controls:Card Grid.Row="2" Title="待 P1 实现">
+            <StackPanel Spacing="8">
+                <TextBlock Text="• 队列表：kind / 状态 / 最后错误 / pending_error_counts（上游口径）" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• 重试：retry-failures --include-terminal / worker_entry --retry-failed（每 release 一次 re-look）" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• 限额：daily_work_limit（0=不限）、storage_budget 状态" Style="{StaticResource MonoTextStyle}" />
+            </StackPanel>
+        </controls:Card>
+    </Grid>
+</UserControl>

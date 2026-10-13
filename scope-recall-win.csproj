@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>ScopeRecallWin</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>MSIX</WindowsPackageType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>ScopeRecallWin</AssemblyName>
+    <!-- XAML 编译走 in-proc MSBuild 任务（VS 默认路径）；
+         外部 XamlCompiler.exe 进程在本机被安全策略拦截，退出码 1 且无详情。 -->
+    <UseXamlCompilerExecutable>false</UseXamlCompilerExecutable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- WinUI 3 / Windows App SDK：核心依赖（1.8 为 1.x 末代，修复 .NET 8 SDK 下的 XAML 编译工具链问题） -->
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260921001" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
+    <!-- MVVM（CommunityToolkit）：ViewModel 基建 -->
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <!-- 只读 SQLite：读通道（Mode=ReadOnly） -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 所有 XAML 资源自动编译（UseWinUI 已处理，此处仅为显式声明） -->
+    <None Update="app.manifest" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'=='true' and '$(EnableMsixTooling)'=='true'">
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+  </PropertyGroup>
+</Project>

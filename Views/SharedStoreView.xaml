@@ -1,0 +1,23 @@
+<UserControl
+    x:Class="ScopeRecallWin.Views.SharedStoreView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
+    <Grid Padding="26" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="共享存储" Style="{StaticResource PageTitleTextStyle}" />
+        <TextBlock Grid.Row="1" Text="init-shared / attach（hermes|codex|claude-code|workbuddy|dsh，grants-from/like、capture-like）/ detach / import-entry（--dry-run 预览）/ entry 列表（来源 agent 标记）/ 共享 worker autostart 状态。对应附 1 第 10、11、13 项。"
+                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+        <controls:Card Grid.Row="2" Title="待 P1/P4 实现">
+            <StackPanel Spacing="8">
+                <TextBlock Text="• 短路径提示（Windows 上 LanceDB 路径过长 → native_vector_path_too_long）" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• 版本一致性：shared store 所有进程必须 ≥ 对应版本（如 dsh ≥3.7.0）" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• detach 前必须 apply-uninstall（约束 9）" Style="{StaticResource MonoTextStyle}" />
+            </StackPanel>
+        </controls:Card>
+    </Grid>
+</UserControl>

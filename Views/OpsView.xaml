@@ -1,0 +1,23 @@
+<UserControl
+    x:Class="ScopeRecallWin.Views.OpsView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
+    <Grid Padding="26" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="运维" Style="{StaticResource PageTitleTextStyle}" />
+        <TextBlock Grid.Row="1" Text="命令面板：backup / adopt / migrate prepare+apply / import-entry --dry-run+apply / index-rebuild / respace-embeddings / unindex-withheld-outputs（高危红字 + 二次确认）；多 store 并排对比；receipts 收据查看；向量保留期状态（tool_output_retention_days）。对应附 1 第 12、26、28 项。"
+                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+        <controls:Card Grid.Row="2" Title="待 P1/P4 实现">
+            <StackPanel Spacing="8">
+                <TextBlock Text="• 命令执行：只读/运维命令走官方 CLI（backup/migrate/adopt 等 25 个子命令）；写入只走 Hermes adapter 工具面 revise/forget（约束 2）" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• 高危操作：DangerButtonStyle + 独立二次确认 ContentDialog" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• receipts：运维目录下每命令一份回执 + 被替换文件副本" Style="{StaticResource MonoTextStyle}" />
+            </StackPanel>
+        </controls:Card>
+    </Grid>
+</UserControl>

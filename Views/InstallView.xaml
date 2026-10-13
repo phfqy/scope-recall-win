@@ -1,0 +1,22 @@
+<UserControl
+    x:Class="ScopeRecallWin.Views.InstallView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
+    <Grid Padding="26" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="安装 / 升级" Style="{StaticResource PageTitleTextStyle}" />
+        <TextBlock Grid.Row="1" Text="plan-install / apply-install 向导（host/instance-root/project-root/agent-id/target-plugin-dir/python/env-file/local-platform/owner-login）+ plan-uninstall / apply-uninstall（默认保留数据，--purge 单独显式确认）。与 doctor 联动。对应附 1 第 27 项。"
+                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+        <controls:Card Grid.Row="2" Title="待 P1/P4 实现">
+            <StackPanel Spacing="8">
+                <TextBlock Text="• 参数表 → plan 预览（receipts）→ apply 执行 → doctor 验证" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• 卸载默认仅移除 wrapper，保留记忆库与配置；purge 用 DangerButtonStyle + 二次确认" Style="{StaticResource MonoTextStyle}" />
+            </StackPanel>
+        </controls:Card>
+    </Grid>
+</UserControl>

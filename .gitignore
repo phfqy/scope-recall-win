@@ -1,0 +1,53 @@
+## .NET / WinUI 3 构建产物
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.csproj.user
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## 构建输出 / 打包
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+*.appinstaller
+AppPackages/
+BundleArtifacts/
+PublishProfiles/*.pubxml.user
+
+## NuGet
+*.nupkg
+*.snupkg
+packages/
+!packages/repositories.config
+
+## 测试 / 覆盖率
+[Tt]est[Rr]esult*/
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+
+## 本地配置（含本机路径，勿入库）
+*.log
+.env
+.env.*
+appsettings.*.local.json
+
+## 系统杂项
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+## IDE
+.idea/
+*.swp
+*~

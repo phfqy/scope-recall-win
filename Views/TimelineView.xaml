@@ -1,0 +1,22 @@
+<UserControl
+    x:Class="ScopeRecallWin.Views.TimelineView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
+    <Grid Padding="26" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="时间线" Style="{StaticResource PageTitleTextStyle}" />
+        <TextBlock Grid.Row="1" Text="session / episode / capture 事件时间线。时间戳含 +00:00 微秒与 Z 两种格式，必须解析归一后排序（禁止按文本排序）。对应附 1 第 4 项口径。"
+                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+        <controls:Card Grid.Row="2" Title="待 P1 实现">
+            <StackPanel Spacing="8">
+                <TextBlock Text="• 事件流：Helpers/TimestampNormalizer 归一两种时间戳" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• 状态流转标记：episode 证据数用 &lt;=（core/lineage.py）" Style="{StaticResource MonoTextStyle}" />
+            </StackPanel>
+        </controls:Card>
+    </Grid>
+</UserControl>

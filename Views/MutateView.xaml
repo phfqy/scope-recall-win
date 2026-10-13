@@ -1,0 +1,23 @@
+<UserControl
+    x:Class="ScopeRecallWin.Views.MutateView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
+    <Grid Padding="26" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="变更" Style="{StaticResource PageTitleTextStyle}" />
+        <TextBlock Grid.Row="1" Text="人工修改记忆（经 Hermes adapter 工具面，协议 v1.1；身份由 provider 绑定，不伪造）：revise 纠正或撤回一条记忆（new_value=null 即撤回，旧值留历史，乐观并发 expected_revision）；forget 停用或抹除（suppress：不再主动使用、仍可按需读取、不可撤销；delete：连来源消息及其它事实一并抹除、不可撤销）。上游 CLI 无 mutate 子命令、无 create 变更（claim 只能经 capture 产生）。授权句=用户亲笔指令（不代笔/不预填/不记忆复用，须明确点名目标）；写前自动备份、写后回读校验；record_event 留痕 → 审计页可追溯。对应附 1 第 9 项。"
+                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+        <controls:Card Grid.Row="2" Title="待 P1/P2 实现">
+            <StackPanel Spacing="8">
+                <TextBlock Text="• 授权句输入框（不代笔/不预填/不记忆复用）+ 校验（前端 + MutateService 双拦截）" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• 危险操作：delete / forget 用 DangerButtonStyle + 二次确认 ContentDialog（红字后果）" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• 流程：自动 backup → 执行 → record_event → 回读校验（版本+1、审计存在）→ 失败可回滚" Style="{StaticResource MonoTextStyle}" />
+            </StackPanel>
+        </controls:Card>
+    </Grid>
+</UserControl>

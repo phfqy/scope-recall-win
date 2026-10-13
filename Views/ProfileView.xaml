@@ -1,0 +1,22 @@
+<UserControl
+    x:Class="ScopeRecallWin.Views.ProfileView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
+    <Grid Padding="26" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="档案" Style="{StaticResource PageTitleTextStyle}" />
+        <TextBlock Grid.Row="1" Text="profile 确定性分类视图：facts / preferences / constraints / decisions / pending_intentions 分节 + disputed + gaps + coverage/answerability；未巩固主体如实显示 consolidation_required，绝不把聊天原文写成档案。对应附 1 第 7 项。"
+                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+        <controls:Card Grid.Row="2" Title="待 P1/P2 实现">
+            <StackPanel Spacing="8">
+                <TextBlock Text="• 请求：protocol_version 1.1 / subject / max_items(1-30) / budget_tokens(64-8000，按 UTF-8 字节)" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• 响应：claim ref/revision、temporal_status、evidence_refs、source_contexts" Style="{StaticResource MonoTextStyle}" />
+            </StackPanel>
+        </controls:Card>
+    </Grid>
+</UserControl>

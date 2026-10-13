@@ -1,0 +1,24 @@
+<UserControl
+    x:Class="ScopeRecallWin.Views.AiSettingsView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
+    <Grid Padding="26" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="AI 设置" Style="{StaticResource PageTitleTextStyle}" />
+        <TextBlock Grid.Row="1" Text="runtime-config.json 全量编辑器：binding（只读）+ 预算旋钮 + vector + vector_threshold + owner_names + auxiliary 模型路由与预算账本 + credential_env（凭据管理器）。写前备份、写后 doctor 校验；AI 只被配置、不直接写库。对应附 1 第 14-21 项。"
+                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+        <controls:Card Grid.Row="2" Title="待 P1/P3 实现">
+            <StackPanel Spacing="8">
+                <TextBlock Text="• 预算旋钮：max_items/drain_seconds/request_seconds/lease_seconds/…（边界见 docs/configuration.md）" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• vector：backend lancedb|sqlite-bruteforce、storage_dir 必须在 data_directory/vectors/&lt;space&gt;" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• 路由：embedding（gemini/openai、Voyage output_dimension）、consolidation（openai/openai_responses/codex_cli）" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• Key：Windows Credential Manager（Services/CredentialService），值绝不出现在 JSON/日志" Style="{StaticResource MonoTextStyle}" />
+            </StackPanel>
+        </controls:Card>
+    </Grid>
+</UserControl>

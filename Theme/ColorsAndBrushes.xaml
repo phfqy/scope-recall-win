@@ -1,0 +1,29 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- 语义色（不随主题切换，与暗/亮主题各自的 Surface 色配合）：
+         参考 WinUI 3 Gallery 的状态语义与 Files 的工程管理观感。 -->
+
+    <!-- 成功 -->
+    <SolidColorBrush x:Key="SuccessBrush" Color="#2EA043" />
+    <SolidColorBrush x:Key="SuccessSoftBrush" Color="#2EA043" Opacity="0.12" />
+    <!-- 警告 -->
+    <SolidColorBrush x:Key="WarningBrush" Color="#D29922" />
+    <SolidColorBrush x:Key="WarningSoftBrush" Color="#D29922" Opacity="0.12" />
+    <!-- 危险 -->
+    <SolidColorBrush x:Key="DangerBrush" Color="#F85149" />
+    <SolidColorBrush x:Key="DangerSoftBrush" Color="#F85149" Opacity="0.12" />
+    <!-- 信息 -->
+    <SolidColorBrush x:Key="InfoBrush" Color="#58A6FF" />
+    <SolidColorBrush x:Key="InfoSoftBrush" Color="#58A6FF" Opacity="0.12" />
+
+    <!-- 等宽字体（时间戳/ID/字节数），对齐"工程控制台"信息密度 -->
+    <FontFamily x:Key="MonoFontFamily">Cascadia Code, Consolas, monospace</FontFamily>
+    <!-- 界面主字体 -->
+    <FontFamily x:Key="AppFontFamily">Segoe UI, Segoe UI Variable, sans-serif</FontFamily>
+
+    <!-- 命令面板浮层等使用的亚克力画笔（SystemBackdropElement 可在 1.6+ 直接做元素级 Mica/Acrylic） -->
+    <AcrylicBrush x:Key="AcrylicPanelBrush"
+                  TintColor="#202020" TintOpacity="0.85" FallbackColor="#202020" />
+</ResourceDictionary>

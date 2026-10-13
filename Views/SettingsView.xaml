@@ -1,0 +1,23 @@
+<UserControl
+    x:Class="ScopeRecallWin.Views.SettingsView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
+    <Grid Padding="26" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="设置" Style="{StaticResource PageTitleTextStyle}" />
+        <TextBlock Grid.Row="1" Text="主题（暗/亮跟随系统 + 手动）、自动刷新开关+间隔、巡检计划（5/15/60 分钟 + 积压阈值 + 系统通知）、开机自启开关（MSIX StartupTask）、通知点击聚焦对应视图。对应附 1 第 31 项。"
+                   Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+        <controls:Card Grid.Row="2" Title="待 P1/P4 实现">
+            <StackPanel Spacing="8">
+                <TextBlock Text="• 主题切换：RootGrid.RequestedTheme + 持久化（本地配置文件，参考 Theme/ 双字典）" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• 开机自启：Package.appxmanifest 已声明 ScopeRecallWinStartup（Enabled=false），P4 实现开关注册" Style="{StaticResource MonoTextStyle}" />
+                <TextBlock Text="• 托盘常驻：关闭最小化到托盘（Services/TrayService 占位，P4 实现）" Style="{StaticResource MonoTextStyle}" />
+            </StackPanel>
+        </controls:Card>
+    </Grid>
+</UserControl>
