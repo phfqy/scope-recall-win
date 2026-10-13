@@ -13,6 +13,9 @@ public interface IStorageService
     // ---------- 领域查询（总览） ----------
     Task<OverviewStats?> GetOverviewStatsAsync(string sqlitePath);
 
+    /// <summary>待确认候选按「状态+卡住原因」的分布（解释「待确认为何没转正」）。</summary>
+    Task<IReadOnlyList<CandidateReasonRow>> GetCandidateBreakdownAsync(string sqlitePath);
+
     // ---------- 领域查询（记忆） ----------
     Task<(IReadOnlyList<ClaimRow> Rows, long Total)> GetClaimsAsync(
         string sqlitePath, string? status, string? query, int page, int pageSize);
@@ -141,6 +144,48 @@ public sealed class StorageService : IStorageService
         {
             return null;
         }
+    }
+
+    /// <inheritdoc cref="IStorageService.GetCandidateBreakdownAsync"/>
+    public async Task<IReadOnlyList<CandidateReasonRow>> GetCandidateBreakdownAsync(string sqlitePath)
+    {
+        var rows = new List<CandidateReasonRow>();
+        try
+        {
+            using var connection = OpenReadOnly(sqlitePath);
+            await using var _ = connection.ConfigureAwait(false);
+            var cmd = connection.CreateCommand();
+            // 只统计当前版本仍为 proposed 的候选 —— 与总览页「待确认」口径一致。
+            // 注意：一个 claim 可能有多条 candidate_lifecycle（每个候选版本一行），
+            // 直接 JOIN 会重复计数（曾把 455 数成 624），故每条 claim 只取其最新一行生命周期。
+            cmd.CommandText = """
+                SELECT st, reason, COUNT(*) AS n FROM (
+                  SELECT c.claim_id AS cid,
+                    (SELECT cl.processing_state FROM candidate_lifecycle cl WHERE cl.candidate_ref = c.claim_id
+                       ORDER BY cl.candidate_revision DESC, cl.updated_at DESC LIMIT 1) AS st,
+                    (SELECT cl.reason FROM candidate_lifecycle cl WHERE cl.candidate_ref = c.claim_id
+                       ORDER BY cl.candidate_revision DESC, cl.updated_at DESC LIMIT 1) AS reason
+                  FROM claims c JOIN claim_versions v
+                    ON v.claim_id = c.claim_id AND v.revision = c.current_revision
+                  WHERE v.state = 'proposed'
+                )
+                GROUP BY st, reason
+                ORDER BY n DESC
+                """;
+            await using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
+            while (await reader.ReadAsync().ConfigureAwait(false))
+            {
+                rows.Add(new CandidateReasonRow(
+                    reader.GetString(0),
+                    reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    reader.GetInt64(2)));
+            }
+        }
+        catch
+        {
+            // 读不到就返回空列表：上层据此退回「无明细」的展示
+        }
+        return rows;
     }
 
     // ---------- 记忆 ----------

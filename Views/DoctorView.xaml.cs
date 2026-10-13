@@ -65,13 +65,16 @@ public sealed partial class DoctorView : UserControl
                 var host = entry.Host is { Length: > 0 } ? entry.Host : "codex";
                 var r = await ProcessRunner.RunAsync(
                     venvPython,
-                    $"-m scope_recall.maintenance.cli doctor --host {host} --instance-root \"{instanceRoot}\" --python \"{venvPython}\"",
+                    MaintenanceCli.DoctorArgs(host, instanceRoot, venvPython),
                     timeoutMs: 180_000);
 
-                var output = (r.StdOut + "\n" + r.StdErr).Trim();
-                var status = !r.Success ? "failed"
-                    : output.Contains("degraded", StringComparison.OrdinalIgnoreCase) ? "degraded"
-                    : "ok";
+                var output = r.Success
+                    ? (r.StdOut + "\n" + r.StdErr).Trim()
+                    : MaintenanceCli.FailureText(r) + "\n" + (r.StdOut + "\n" + r.StdErr).Trim();
+                // doctor 以退出码表达结论（1 = 有问题），报告里的 degraded 才是权威判定
+                var status = output.Contains("degraded", StringComparison.OrdinalIgnoreCase) ? "degraded"
+                    : r.Success ? "ok"
+                    : "failed";
                 if (status == "ok")
                 {
                     okCount++;

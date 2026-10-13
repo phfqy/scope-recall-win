@@ -25,6 +25,13 @@ public sealed partial class SharedStoreView : UserControl
         ["claude-code"] = (".claude", "Claude Code", "claude-code"),
     };
 
+    /// <summary>
+    /// 界面「宿主类型」→ 官方 CLI 的 --host 取值。上游 ENTRY_HOSTS 只有
+    /// hermes/codex/claude-code/workbuddy/dsh：<b>workbuddy-ai 是成员标识（--entry）而不是宿主</b>，
+    /// 直接当 --host 传会被 argparse 判为非法取值并以 exit 2 打 usage。
+    /// </summary>
+    private static string CliHostOf(string uiTag) => uiTag == "workbuddy-ai" ? "workbuddy" : uiTag;
+
     private readonly IPluginService? _plugin;
 
     public SharedStoreView()
@@ -142,11 +149,17 @@ public sealed partial class SharedStoreView : UserControl
                 return;
             }
 
-            var host = PickerHost.SelectedTag ?? "";
+            var hostTag = PickerHost.SelectedTag ?? "";
+            var cliHost = CliHostOf(hostTag);
             var entry = (TxtEntryId.Text ?? "").Trim();
             var displayName = (TxtDisplayName.Text ?? "").Trim();
             var instanceRoot = (TxtInstanceRoot.Text ?? "").Trim();
 
+            if (!MaintenanceCli.EntryHosts.Contains(cliHost))
+            {
+                SetAttachState($"不支持的宿主类型：{hostTag}", "failed");
+                return;
+            }
             if (!Regex.IsMatch(entry, "^[a-z0-9-]{2,32}$"))
             {
                 SetAttachState("成员标识需为 2~32 位小写字母、数字或连字符。", "failed");
@@ -167,6 +180,39 @@ public sealed partial class SharedStoreView : UserControl
                 SetAttachState($"该数据目录不存在：{instanceRoot}（请确认路径是否正确）", "failed");
                 return;
             }
+
+            // 官方契约：attach 的 --root 是「共享库目录」本身（其下 installation.json 即清单），
+            // 不是记忆库根；客户端宿主的授权必须参照**已接入的 Hermes 成员**（--grants-like /
+            // --capture-like），Hermes 宿主反而不能给这两个开关。
+            var sharedRoot = PathDiscovery.SharedDir(root);
+            var grantsNote = "由本成员自带的安装清单推导（Hermes 宿主）";
+            string? grantsLike = null;
+            string? captureLike = null;
+            if (MaintenanceCli.IsClientHost(cliHost))
+            {
+                var entriesNow = _plugin is null
+                    ? new List<PluginEntry>()
+                    : (await _plugin.ListEntriesAsync(root)).ToList();
+                var hermesEntries = entriesNow
+                    .Where(en => string.Equals(en.Host, "hermes", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (hermesEntries.Count == 0)
+                {
+                    SetAttachState(
+                        "共享库里还没有 Hermes 成员：客户端成员的读写与捕获范围要参照 Hermes 成员的 owner 行，" +
+                        "请先接入一个 Hermes 助手，再接入本成员。", "failed");
+                    return;
+                }
+                grantsLike = "all";
+                captureLike = hermesEntries[0].Entry;
+                grantsNote = hermesEntries.Count == 1
+                    ? $"参照 Hermes 成员「{captureLike}」"
+                    : $"参照 Hermes 成员「{captureLike}」等 {hermesEntries.Count} 个（捕获范围取第一个）";
+            }
+
+            var runtimeConfigFrom = PathDiscovery.RuntimeConfigPath(root);
+            var hasRoutes = File.Exists(runtimeConfigFrom);
+
             var dialog = new ContentDialog
             {
                 Title = "确认接入共享库",
@@ -174,9 +220,14 @@ public sealed partial class SharedStoreView : UserControl
                 {
                     TextWrapping = TextWrapping.Wrap,
                     Text = $"将把「{displayName}」接入当前共享库：\n\n" +
+                           $"• 宿主类型：{cliHost}\n" +
                            $"• 成员标识：{entry}\n" +
-                           $"• 数据目录：{instanceRoot}\n\n" +
-                           "它原有的记忆会并入共享库（原库会自动备份），之后新记忆也写入共享库。",
+                           $"• 数据目录：{instanceRoot}\n" +
+                           $"• 授权范围：{grantsNote}\n" +
+                           $"• 向量路由：{(hasRoutes ? "沿用共享 worker 的模型（写入该成员自己的 runtime-config）" : "未找到 shared\\runtime-config.json，只能词法检索")}\n\n" +
+                           "会写入共享库的 installation.json。若该助手此前已有自己的记忆库，请先把它移开" +
+                           "（例如改名为 scope-recall.local-日期），否则官方 CLI 会拒绝接入；" +
+                           "接入后该助手的新记忆都写入共享库。",
                 },
                 PrimaryButtonText = "确认接入",
                 CloseButtonText = "取消",
@@ -193,19 +244,22 @@ public sealed partial class SharedStoreView : UserControl
 
             var result = await ProcessRunner.RunAsync(
                 venvPython,
-                $"-m scope_recall.maintenance.cli attach --host {host} --instance-root \"{instanceRoot}\" " +
-                $"--root \"{root}\" --entry {entry} --display-name \"{displayName}\"",
+                MaintenanceCli.AttachArgs(
+                    sharedRoot, cliHost, instanceRoot, entry, displayName,
+                    grantsLike, captureLike, hasRoutes ? runtimeConfigFrom : null),
                 timeoutMs: 600_000);
 
             if (result.Success)
             {
-                SetAttachState($"✓ 接入完成：「{displayName}」已加入共享库。", "ok");
+                var note = result.StdOut.Contains("vector_recall_unavailable", StringComparison.Ordinal)
+                    ? "（提示：该成员未拿到向量路由，语义检索暂不可用，可为其补 runtime-config 后重接）"
+                    : "";
+                SetAttachState($"✓ 接入完成：「{displayName}」已加入共享库。{note}", "ok");
                 await ReloadAsync();
             }
             else
             {
-                var reason = FirstLine(result.StdErr) ?? FirstLine(result.StdOut) ?? $"退出码 {result.ExitCode}";
-                SetAttachState($"✗ 接入失败：{reason}", "failed");
+                SetAttachState($"✗ 接入失败：{MaintenanceCli.FailureText(result)}", "failed");
             }
 
             BtnAttach.IsEnabled = true;
@@ -215,15 +269,5 @@ public sealed partial class SharedStoreView : UserControl
     {
         TxtAttachState.Text = message;
         TxtAttachState.Foreground = StatusVisuals.BrushOf(state);
-    }
-
-    private static string? FirstLine(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return null;
-        }
-        var line = text.Split('\n')[0].Trim();
-        return line.Length == 0 ? null : line;
     }
 }

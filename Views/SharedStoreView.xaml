@@ -55,7 +55,7 @@
                 <StackPanel Spacing="12">
                     <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="接入新成员" />
                     <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
-                               Text="把一个 AI 助手接进共享库。接入时它原有的记忆会并入共享库（原库会自动备份），之后它的新记忆也写进共享库。" />
+                               Text="把一个 AI 助手接进共享库：接入后它的新记忆都写进共享库。若该助手此前已有自己的记忆库，请先把它移开（例如改名为 scope-recall.local-日期），否则官方 CLI 会拒绝接入。" />
 
                     <controls:FilterPicker x:Name="PickerHost" Header="该助手属于哪一类（宿主类型）"
                                            ButtonMinWidth="260" />
@@ -87,6 +87,8 @@
                                Text="• 共享库里的记忆对所有已接入的助手可见（仍受各自权限限制）。" />
                     <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
                                Text="• 接入前请先确认该助手已安装记忆插件，并已停止写入（避免数据冲突）。" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="• 接入客户端类助手（WorkBuddy / DSH / Codex / Claude Code）前，库里需先有一个 Hermes 成员：客户端的读写与捕获范围是参照 Hermes 成员的授权推导出来的。" />
                     <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
                                Text="• 彻底新建一个共享库请到「安装」页选择目录后部署，不要在已有库上重复初始化。" />
                 </StackPanel>

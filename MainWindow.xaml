@@ -37,17 +37,29 @@
             </ScrollViewer>
         </Grid>
 
-        <!-- 页面容器：ContentControl 承载 18 个视图（Frame 在 unpackaged 下同样会崩） -->
-        <!-- 内容区：顶栏全局搜索 + 视图宿主 -->
+        <!-- 内容区：视图宿主 + 呼出式顶栏搜索。
+             搜索栏不再常驻占位：默认收起，滚轮上滑从顶部滑出、下滑收起
+             （逻辑在 MainWindow.RootGrid_PointerWheelChanged，捕获已处理的滚轮事件）。 -->
         <Grid Grid.Column="1">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
+            <ContentControl x:Name="ContentHost"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch">
+                <ContentControl.ContentTransitions>
+                    <TransitionCollection>
+                        <EntranceThemeTransition FromHorizontalOffset="24" />
+                    </TransitionCollection>
+                </ContentControl.ContentTransitions>
+            </ContentControl>
 
-            <!-- 全局检索入口：搜索范围是本机记忆库的全部原始事件（跨所有助手与会话） -->
-            <Border Grid.Row="0" Padding="26,14,26,10" Background="{StaticResource SurfaceBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <!-- 全局检索入口（呼出式浮层）：搜索范围是本机记忆库的全部原始事件（跨所有助手与会话）。
+                 收起态：Visibility=Collapsed + 上移 80dp + 透明；展开态见 AnimateSearchBar。 -->
+            <Border x:Name="SearchBar" VerticalAlignment="Top"
+                    Padding="26,14,26,10" Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
+                    IsHitTestVisible="False" Visibility="Collapsed" Opacity="0">
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="SearchBarShift" Y="-80" />
+                </Border.RenderTransform>
                 <Grid ColumnSpacing="10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -71,17 +83,6 @@
                             Click="BtnGlobalSearch_Click" />
                 </Grid>
             </Border>
-
-            <ContentControl x:Name="ContentHost"
-                            Grid.Row="1"
-                            HorizontalContentAlignment="Stretch"
-                            VerticalContentAlignment="Stretch">
-                <ContentControl.ContentTransitions>
-                    <TransitionCollection>
-                        <EntranceThemeTransition FromHorizontalOffset="24" />
-                    </TransitionCollection>
-                </ContentControl.ContentTransitions>
-            </ContentControl>
         </Grid>
 
         <!-- ⌘K 命令面板浮层（Acrylic），Ctrl+K 唤起：输入过滤 + ↑↓ 选择 + Enter 跳转 + Esc 关闭 -->

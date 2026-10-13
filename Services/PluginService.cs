@@ -70,7 +70,7 @@ public sealed record PluginInstallResult(
     IReadOnlyList<string> Steps,
     string? Error);
 
-public sealed record PluginEntry(string Entry, string Host, string Home, string? Python, bool Alive, string? DisplayName = null);
+public sealed record PluginEntry(string Entry, string Host, string Home, string? Python, bool Alive, string? DisplayName = null, string? DetachedAt = null);
 
 public sealed record PluginUpgradeRequest(
     string Root,
@@ -239,7 +239,8 @@ public sealed class PluginService : IPluginService
                             Str(el, "home"),
                             Str(el, "python_executable") is { Length: > 0 } pe ? pe : Nullable(Str(el, "python")),
                             Directory.Exists(Str(el, "home")),
-                            Nullable(Str(el, "display_name"))));
+                            Nullable(Str(el, "display_name")),
+                            Nullable(Str(el, "detached_at"))));
                     }
                 }
                 else if (entries.ValueKind == JsonValueKind.Object)
@@ -252,7 +253,8 @@ public sealed class PluginService : IPluginService
                             Str(prop.Value, "home"),
                             Nullable(Str(prop.Value, "python")),
                             Directory.Exists(Str(prop.Value, "home")),
-                            Nullable(Str(prop.Value, "display_name"))));
+                            Nullable(Str(prop.Value, "display_name")),
+                            Nullable(Str(prop.Value, "detached_at"))));
                     }
                 }
             }
@@ -428,14 +430,17 @@ public sealed class PluginService : IPluginService
             progress?.Report(new PluginInstallProgress("安装插件 wheel", "done", null));
 
             progress?.Report(new PluginInstallProgress("初始化记忆库", "running", "init-shared"));
+            // 官方契约：init-shared 的 --root 是「共享库目录」本身（清单 installation.json 写进该目录，
+            // 且要求该目录为空），不是记忆库根 —— 传根目录会得到 exit 2「root must be a new or empty
+            // directory」。此处必须复用上面已创建的 shared 目录。
             var init = await ProcessRunner.RunAsync(
                 venvPython,
-                $"-m scope_recall.maintenance.cli init-shared --root \"{root}\"",
+                MaintenanceCli.InitSharedArgs(shared),
                 timeoutMs: 300_000, cancellationToken: ct).ConfigureAwait(false);
             if (!init.Success)
             {
                 return new PluginInstallResult(false, null, steps,
-                    $"init-shared 失败：{FirstLine(init.StdErr) ?? init.StdOut}");
+                    $"init-shared 失败：{MaintenanceCli.FailureText(init)}");
             }
             steps.Add("init-shared 完成（installation.json 已生成）");
             progress?.Report(new PluginInstallProgress("初始化记忆库", "done", null));
@@ -516,11 +521,11 @@ public sealed class PluginService : IPluginService
         var backupFile = Path.Combine(workDir, "backups", $"memory-{stamp}.sqlite3");
         var backup = await ProcessRunner.RunAsync(
             venvPython,
-            $"-m scope_recall.maintenance.cli backup --database \"{dbPath}\" --output \"{backupFile}\"",
+            MaintenanceCli.BackupArgs(dbPath, backupFile),
             timeoutMs: 600_000, cancellationToken: ct).ConfigureAwait(false);
         if (!backup.Success || !File.Exists(backupFile))
         {
-            Report(2, "backup", "failed", FirstLine(backup.StdErr) ?? backup.StdOut);
+            Report(2, "backup", "failed", MaintenanceCli.FailureText(backup));
             return new PluginUpgradeResult(false, from, null, log, "记忆库备份失败，中止升级。");
         }
         Report(2, "backup", "done", backupFile);
@@ -548,7 +553,7 @@ public sealed class PluginService : IPluginService
             }
             var stop = await ProcessRunner.RunAsync(
                 venvPython,
-                $"-m scope_recall.maintenance.cli resident --home \"{entry.Home}\" --host {entry.Host} stop",
+                MaintenanceCli.ResidentStopArgs(entry.Home, entry.Host),
                 timeoutMs: 60_000, cancellationToken: ct).ConfigureAwait(false);
             log.Add($"[quiesce] resident stop {entry.Entry}({entry.Host}) exit={stop.ExitCode}");
         }
@@ -566,14 +571,13 @@ public sealed class PluginService : IPluginService
         var pkgBackup = Path.Combine(workDir, $"pkg-backup-{stamp}");
         var upgrade = await ProcessRunner.RunAsync(
             venvPython,
-            $"-m scope_recall.maintenance.cli package-upgrade --python \"{venvPython}\" --wheel \"{wheelPath}\" " +
-            $"--backup \"{pkgBackup}\" --uv \"{uvPath}\" --source-quiesced",
+            MaintenanceCli.PackageUpgradeArgs(venvPython, wheelPath, pkgBackup, uvPath, sourceQuiesced: true),
             timeoutMs: 1_800_000, cancellationToken: ct).ConfigureAwait(false);
         if (!upgrade.Success)
         {
-            Report(5, "install", "failed", FirstLine(upgrade.StdErr) ?? upgrade.StdOut);
+            Report(5, "install", "failed", MaintenanceCli.FailureText(upgrade));
             return new PluginUpgradeResult(false, from, null, log,
-                $"换包失败（未自动回滚）：{FirstLine(upgrade.StdErr) ?? upgrade.StdOut}。备份保留于 {pkgBackup}。");
+                $"换包失败（未自动回滚）：{MaintenanceCli.FailureText(upgrade)}。备份保留于 {pkgBackup}。");
         }
         Report(5, "install", "done", pkgBackup);
 
@@ -654,19 +658,20 @@ public sealed class PluginService : IPluginService
         var instanceRoot = first?.Home is { Length: > 0 } home ? home : PathDiscovery.SharedDir(root);
         var r = await ProcessRunner.RunAsync(
             venvPython,
-            $"-m scope_recall.maintenance.cli doctor --host {host} --instance-root \"{instanceRoot}\" --python \"{venvPython}\"",
+            MaintenanceCli.DoctorArgs(host, instanceRoot, venvPython),
             timeoutMs: 180_000, cancellationToken: ct).ConfigureAwait(false);
+        // doctor 用退出码表达结论（1 = 有问题但仍给出了完整体检报告），报告里的 status 才是权威判定：
+        // degraded 不该被当作「体检失败」，更不该把回执首行的「{」当成原因。
+        var report = r.Success ? r.StdOut : r.StdOut + "\n" + r.StdErr;
+        if (report.Contains("degraded", StringComparison.OrdinalIgnoreCase))
+        {
+            return ("degraded", FirstLine(report) ?? "doctor 报告 degraded");
+        }
         if (!r.Success)
         {
-            return ("failed", FirstLine(r.StdErr) ?? FirstLine(r.StdOut) ?? $"exit={r.ExitCode}");
+            return ("failed", MaintenanceCli.FailureText(r));
         }
-        var text = r.StdOut;
-        var status = "ok";
-        if (text.Contains("degraded", StringComparison.OrdinalIgnoreCase))
-        {
-            status = "degraded";
-        }
-        return (status, FirstLine(text) ?? "doctor 完成");
+        return ("ok", FirstLine(report) ?? "doctor 完成");
     }
 
     /// <summary>目录访问自检：当前用户可读写；提示 Agent 侧可能的账户差异。</summary>

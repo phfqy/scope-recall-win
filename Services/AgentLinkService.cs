@@ -56,17 +56,32 @@ public sealed class AgentLinkService : IAgentLinkService
         var result = new List<AgentLinkStatus>();
         foreach (var entry in entries)
         {
+            // A detached entry is no longer a link: the store keeps its memories, but the
+            // panel must not report it as connected. detach() records detached_at and
+            // leaves the row in installation.json, so filter on that, not on absence.
+            if (!string.IsNullOrEmpty(entry.DetachedAt))
+            {
+                continue;
+            }
+
             var (linked, detail) = CheckConfigLinked(entry);
             // 一个 host 可能有多个 resident 实例（如 workbuddy 双安装）
             var hosts = residents.Where(r => string.Equals(r.Host, entry.Host, StringComparison.OrdinalIgnoreCase)).ToList();
             var alive = hosts.Where(h => IsProcessAlive(h.Pid)).ToList();
             var best = alive.FirstOrDefault() ?? hosts.FirstOrDefault();
 
-            var health = linked && best is not null && alive.Count > 0 ? "ok"
+            // Hermes attaches through the memory provider (in-process recall), not the
+            // MCP/resident channel: `scope-recall resident --host` accepts only
+            // codex / claude-code / workbuddy / dsh, so a hermes entry never has a
+            // resident and waiting for one would say "partly available" forever.
+            var residentCapable = entry.Host is "codex" or "claude-code" or "workbuddy" or "dsh";
+
+            var health = linked && (!residentCapable || alive.Count > 0) ? "ok"
                 : linked ? "warn"
                 : "danger";
             var healthDetail = health switch
             {
+                "ok" when !residentCapable => "配置已注册（memory provider 通道，无需 resident）",
                 "ok" => "配置已注册且 resident 在运行",
                 "warn" => hosts.Count == 0 ? "配置已注册，resident 未启动（首次召回时惰性启动）" : "配置已注册，resident 进程已退出",
                 _ => "宿主配置中未检测到 scope-recall 注册",

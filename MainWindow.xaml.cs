@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using ScopeRecallWin.Infrastructure;
 using Windows.System;
 
@@ -135,14 +136,26 @@ public sealed partial class MainWindow : Window
         accelerator.Invoked += (_, _) => TogglePalette();
         RootGrid.KeyboardAccelerators.Add(accelerator);
 
-        // Ctrl+F：聚焦顶栏全局搜索框
+        // Ctrl+F：呼出顶栏全局搜索框并聚焦（搜索栏默认收起，见 RootGrid_PointerWheelChanged）
         var focusSearch = new KeyboardAccelerator
         {
             Key = VirtualKey.F,
             Modifiers = VirtualKeyModifiers.Control,
         };
-        focusSearch.Invoked += (_, _) => TxtGlobalSearch.Focus(FocusState.Programmatic);
+        focusSearch.Invoked += (_, _) =>
+        {
+            AnimateSearchBar(show: true);
+            TxtGlobalSearch.Focus(FocusState.Programmatic);
+        };
         RootGrid.KeyboardAccelerators.Add(focusSearch);
+
+        // 滚轮呼出/收起顶栏搜索：上滑呼出、下滑收起。
+        // 用 handledEventsToo=true 捕获已被内部 ScrollViewer 吃掉的滚轮事件 ——
+        // 这样指针悬停在任意列表/页面上滚动也生效（内容照常滚动，顶栏只跟随方向）。
+        RootGrid.AddHandler(
+            UIElement.PointerWheelChangedEvent,
+            new PointerEventHandler(RootGrid_PointerWheelChanged),
+            handledEventsToo: true);
 
         // 外观：应用保存的主题设置（含标题栏配色，避免顶栏与内容区色调不一致）
         ThemeService.Apply(App.Settings.Theme);
@@ -234,7 +247,75 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    // ---------- 顶栏全局检索 ----------
+    // ---------- 顶栏全局检索（呼出式浮层） ----------
+
+    private bool _searchBarShown;
+    private Storyboard? _searchBarStory;
+
+    /// <summary>滚轮方向驱动顶栏搜索的呼出/收起：上滑（delta &gt; 0）呼出，下滑收起。</summary>
+    private void RootGrid_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        var delta = e.GetCurrentPoint(RootGrid).Properties.MouseWheelDelta;
+        if (delta > 0)
+        {
+            AnimateSearchBar(show: true);
+        }
+        else if (delta < 0)
+        {
+            AnimateSearchBar(show: false);
+        }
+    }
+
+    /// <summary>搜索栏滑入/滑出动画：位移 -80dp ↔ 0，透明度 0 ↔ 1，180ms 缓出。</summary>
+    private void AnimateSearchBar(bool show)
+    {
+        if (_searchBarShown == show)
+        {
+            // 已是目标状态：仅在「呼出」时补一次聚焦（滚轮反复上滑不应反复播动画）
+            return;
+        }
+        _searchBarShown = show;
+        _searchBarStory?.Stop();
+
+        if (show)
+        {
+            SearchBar.Visibility = Visibility.Visible;
+            SearchBar.IsHitTestVisible = true;
+            SearchBarShift.Y = -80;
+            SearchBar.Opacity = 0;
+        }
+
+        var story = new Storyboard();
+        var shift = new DoubleAnimation
+        {
+            To = show ? 0 : -80,
+            Duration = new Duration(TimeSpan.FromMilliseconds(180)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        Storyboard.SetTarget(shift, SearchBarShift);
+        Storyboard.SetTargetProperty(shift, "Y");
+        story.Children.Add(shift);
+
+        var fade = new DoubleAnimation
+        {
+            To = show ? 1d : 0d,
+            Duration = new Duration(TimeSpan.FromMilliseconds(180)),
+        };
+        Storyboard.SetTarget(fade, SearchBar);
+        Storyboard.SetTargetProperty(fade, "Opacity");
+        story.Children.Add(fade);
+
+        if (!show)
+        {
+            story.Completed += (_, _) =>
+            {
+                SearchBar.Visibility = Visibility.Collapsed;
+                SearchBar.IsHitTestVisible = false;
+            };
+        }
+        _searchBarStory = story;
+        story.Begin();
+    }
 
     private void TxtGlobalSearch_KeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -246,10 +327,11 @@ public sealed partial class MainWindow : Window
 
     private void BtnGlobalSearch_Click(object sender, RoutedEventArgs e) => RunGlobalSearch();
 
-    /// <summary>跳转到检索页并执行检索（顶栏与命令面板共用）。</summary>
+    /// <summary>跳转到检索页并执行检索（顶栏与命令面板共用）。检索完成后收起呼出式顶栏，避免遮挡结果。</summary>
     private void RunGlobalSearch(string? keywordOverride = null)
     {
         var keyword = keywordOverride ?? (TxtGlobalSearch.Text ?? "").Trim();
+        AnimateSearchBar(show: false);
         NavigateTo(Views["search"]);
         if (_navButtons.TryGetValue("search", out var parts))
         {

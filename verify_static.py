@@ -149,7 +149,7 @@ for f in (ico, iss, isl):
         fail(f"V6 缺安装器文件 {f.relative_to(ROOT)}")
 if iss.exists():
     iss_text = iss.read_text(encoding="utf-8")
-    for token in ("ScopeRecallWin-Setup-1.3.0", "PrivilegesRequired=lowest"):
+    for token in ("ScopeRecallWin-Setup-1.3.1", "PrivilegesRequired=lowest"):
         if token not in iss_text:
             fail(f"V6 setup.iss 缺少关键配置: {token}")
 ok.append("V6 安装器: app.ico / setup.iss / ChineseSimplified.isl 齐备")
@@ -167,6 +167,33 @@ for f in list(source_files("*.cs")) + list(source_files("*.xaml")) + [ROOT / "RE
         if re.search(pat, text):
             fail(f"V7 {f.relative_to(ROOT)}: {why} (/{pat}/)")
 ok.append("V7 上游口径残留扫描: 通过")
+
+# ---------- V8 维护 CLI 参数装配 ----------
+# 上游 3.10.2 的维护 CLI 参数面曾经三处踩坑（全部为 exit 2 / 假成功）：
+#   1) 绑定 store 的六个子命令 --config 是 argparse required=True，漏传即 exit 2 只打 usage
+#      （曾表现为「重试失败（退出码 2）：usage: … retry-failures …」）；
+#   2) 这些命令默认预演，不带 --apply 时 exit 0 但 applied=false，属假成功；
+#   3) 共享库命令的 --root 是「共享库目录」本身（<记忆库根>\shared），传记忆库根即 exit 2；
+#      客户端宿主 attach 还必须给 --grants-like/--capture-like（且只能指向已接入的 Hermes 成员），
+#      而 --host 只有 hermes/codex/claude-code/workbuddy/dsh（workbuddy-ai 是成员标识，不是宿主）。
+# 因此：**除收口文件 Infrastructure/MaintenanceCli.cs 外，任何 .cs 都不得出现 CLI 调用串**。
+HANDWRITTEN_ALLOWED = {"MaintenanceCli.cs"}
+cli_literal = re.compile(r"maintenance\.cli")
+for f in sorted(source_files("*.cs")):
+    if f.name in HANDWRITTEN_ALLOWED:
+        continue
+    text = f.read_text(encoding="utf-8")
+    # 去掉注释再扫：文档里引用模块路径不算违规
+    text = re.sub(r"//[^\n]*", "", text)
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    if cli_literal.search(text):
+        line = text[: cli_literal.search(text).start()].count("\n") + 1
+        fail(
+            f"V8 {f.relative_to(ROOT)}: 手写了官方 CLI 调用（约第 {line} 行）—— "
+            f"必须经 Infrastructure/MaintenanceCli 的 Build/AttachArgs/BackupArgs/DoctorArgs/… 装配，"
+            f"否则极易漏 --config/--apply、把记忆库根当共享库根传、或漏掉 attach 的授权参照"
+        )
+ok.append("V8 维护 CLI 参数装配: CLI 调用串已全部收口到 Infrastructure/MaintenanceCli.cs")
 
 # ---------- 报告 ----------
 print("== 通过项 ==")

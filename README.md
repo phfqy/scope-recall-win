@@ -5,43 +5,35 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010.0.19041%2B-blue.svg)](https://learn.microsoft.com/windows/apps/windows-app-sdk/)
 
-Scope Recall v3 记忆核心的 Windows 桌面管理控制台。**WinUI 3（Windows App SDK）+ C#/XAML**，
-18 视图全功能规划，UI 采用 Fluent Design 自由设计（不复制 WebUI 风格），功能覆盖以
-`WIN-APP-PROMPTS.md` 的【附 1 功能全景对照表】为准。
+**Scope Recall Win** 是 Scope Recall v3 记忆核心的 Windows 桌面管理控制台：
+把本机的共享记忆库变成一个看得见、管得着的桌面应用 —— 记忆总览与检索、候选/队列/审计、
+共享库与助手接入、部署/诊断/备份/升级，全部在一个 **WinUI 3（Windows App SDK）+ C#/XAML**、
+Fluent Design 明暗双主题 + Mica 的 18 视图原生应用里完成。
 
-**分发形态：unpackaged exe 桌面安装版**（Inno Setup，per-user 免管理员安装）。
-本仓库不产出、不分发 MSIX。
+**读写边界（安全设计）**：读 = 直连 `memory.sqlite3`（`Mode=ReadOnly` + `query_only` 双保险，
+绝不 import 上游包、绝不触发迁移）；写 = 只经官方维护 CLI 编排（部署/备份/回滚/接入/重评/升级），
+控制台本身不写记忆库。**分发形态：unpackaged exe 桌面安装版**（Inno Setup，per-user 免管理员），
+不产出、不分发 MSIX。
 
-**📦 直接下载安装**：[Releases → v1.1.0](https://github.com/phfqy/scope-recall-win/releases/latest)
-（`ScopeRecallWin-Setup-1.1.0.exe`，含安装说明与 SHA256）
+**📦 直接下载安装**：[Releases → v1.3.1](https://github.com/phfqy/scope-recall-win/releases/latest)
+（`ScopeRecallWin-Setup-1.3.1.exe`，含安装说明与 SHA256）
 
-> 本目录是 **P0 骨架**：可打开、可导航、主题可切换，服务层为接口/占位实现。
-> P1（视图与交互）、P2（读写数据通道）、P3（runtime-config 编辑器 + worker 启停）、
-> P4（更新/安装卸载/共享 store/托盘/自启）按提示词包逐项填充。
->
-> 2026-10-13 修复轮（依据《ScopeRecall-开发测试报告》5.2 优先级）：P0-1 补齐 csproj 与
-> app.manifest；P0-2 补齐 9 个缺失视图并重写 OpsView.xaml；P1-1 重设计 MutateService
-> （对齐上游 revise/forget 工具面，删除 create 枚举）；P1-2 Claims 状态口径改五状态 +
-> suppressed 列；P1-3 文案对齐。
->
-> 2026-10-13 编译轮：装 .NET 8 SDK 后在 Windows 11 实测 **dotnet build / publish 通过**，
-> 修复 3 个编译级问题（MicaKind 命名空间在 Microsoft.UI.Composition.SystemBackdrops；
-> WinUI 3 无 TextCharacterSpacing 改用 CharacterSpacing；unpackaged 下自建导航替换
-> Frame/NavigationView），WindowsAppSDK 升级 1.6→1.8，产出 exe 安装版成品。
->
-> 2026-10-13 安装轮：分发形态锁定 unpackaged + Inno Setup。移除 MSIX 打包链
-> （Package.appxmanifest / install_msix.ps1 / MSIX 磁贴图标），自启改注册表 Run key 方案。
->
-> 2026-10-13 功能轮（v1.1.0）：**18 视图全部接真实可用功能** —— 只读直连
-> memory.sqlite3（Mode=ReadOnly + query_only），官方 CLI 编排部署/升级/备份/诊断/
-> retry/attach 等写操作，runtime-config 大模型配置 + 凭据管理器，Agent 链接状态三维校验；
-> 侧边栏补副标题/选中指示条/视图缓存/⌘K 可用化。启动方式改为显式 Bootstrap
-> （修复 self-contained 下 CoreMessagingXP fail-fast）。
+## 当前能力（v1.3.1）
+
+- **18 个视图全部接真实数据**：总览（健康分 + 待确认候选按原因明细）/ 记忆 / 时间线 / 检索 / 档案
+  （关系图 + 多维排序）/ 队列（失败原因 + 一键重试）/ 候选记录 / 审计 / 检索定位。
+- **写通道全部走官方 CLI**（参数装配统一收口在 `Infrastructure/MaintenanceCli`，静态检查 V8 拦截手写）：
+  部署（init-shared / venv / wheel）、共享库 attach/detach、备份与回滚（先自动备份→预演→执行）、
+  候选重评、失败重试、向量重建、插件升级（六步：检查→备份→下载→停机→换包→doctor 校验）。
+- **诊断页**逐 entry 调官方 `doctor`，报告可复制/可存档；**助手连接页**三维校验（配置注册 /
+  resident 常驻 / 进程存活），Hermes 通道单独识别。
+- **体验**：Ctrl+K 命令面板、滚轮呼出式顶栏检索（上滑呼出 / 下滑收起 / Ctrl+F 聚焦）、
+  明暗主题即时切换 + 标题栏配色同步、关系图缩放、托盘常驻。
 
 ## 安装（Windows，免管理员）
 
 下载 [Release 附件](https://github.com/phfqy/scope-recall-win/releases/latest) 的
-`ScopeRecallWin-Setup-1.0.0.exe`，双击运行：
+`ScopeRecallWin-Setup-1.3.1.exe`，双击运行：
 
 - per-user 安装到 `%LOCALAPPDATA%\Programs\ScopeRecallWin`，**无需管理员权限**
 - 自动创建开始菜单 + 桌面快捷方式，自带标准卸载器（设置 → 应用 → 卸载）
@@ -50,7 +42,7 @@ Scope Recall v3 记忆核心的 Windows 桌面管理控制台。**WinUI 3（Wind
 静默安装：
 
 ```powershell
-ScopeRecallWin-Setup-1.0.0.exe /VERYSILENT
+ScopeRecallWin-Setup-1.3.1.exe /VERYSILENT
 ```
 
 ## 打开方式（源码运行 / 二次构建）

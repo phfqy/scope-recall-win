@@ -223,7 +223,7 @@ public sealed partial class QueueView : UserControl
             }
             var root = PathDiscovery.FindMemoryRoot(App.Settings);
             var venvPython = root is null ? null : PathDiscovery.FindVenvPython(root);
-            if (venvPython is null)
+            if (root is null || venvPython is null)
             {
                 await ShowInfoAsync("无法定位共享 venv（shared-venv\\Scripts\\python.exe）。");
                 return;
@@ -240,31 +240,29 @@ public sealed partial class QueueView : UserControl
             }
 
             TxtTotal.Text = "正在重试失败任务…";
+            // 官方契约：retry-failures 的 --config 必给（否则 exit 2 只打 usage），
+            // 且不带 --apply 只是预演（exit 0 但 applied=false，队列并不会被改动）。
             var result = await ProcessRunner.RunAsync(
                 venvPython,
-                "-m scope_recall.maintenance.cli retry-failures",
+                MaintenanceCli.Build(root, "retry-failures", apply: true),
                 timeoutMs: 300_000);
-            if (result.Success)
+            if (result.Success && !MaintenanceCli.IsPreviewOnly(result.StdOut))
             {
-                TxtTotal.Text = $"已重试：失败任务已重新入队处理。{(result.StdOut.Length > 200 ? result.StdOut[..200] + "…" : result.StdOut)}";
+                var retried = MaintenanceCli.ReceiptCount(result.StdOut, "retried");
                 await ReloadAsync();
+                // ReloadAsync 会重写 TxtTotal，故确认信息放在其后拼接，避免被覆盖而看不到。
+                TxtTotal.Text = $"已重试：失败任务已重新入队处理（重新入队 {retried?.ToString() ?? "?"} 条）。{TxtTotal.Text}";
+            }
+            else if (result.Success)
+            {
+                await ShowInfoAsync("CLI 以退出码 0 结束，但回执显示只做了预演（applied=false），队列未被改动。");
             }
             else
             {
-                await ShowInfoAsync($"重试失败（退出码 {result.ExitCode}）：\n{FirstLine(result.StdErr) ?? result.StdOut}");
+                await ShowInfoAsync($"重试失败：\n{MaintenanceCli.FailureText(result)}");
             }
 
         });
-    }
-
-    private static string? FirstLine(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return null;
-        }
-        var line = text.Split('\n')[0].Trim();
-        return line.Length == 0 ? null : line;
     }
 
     private async Task ShowInfoAsync(string message)

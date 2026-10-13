@@ -56,6 +56,9 @@ public sealed partial class OverviewView : UserControl
         }
 
         var stats = await _storage.GetOverviewStatsAsync(_dbPath);
+        var breakdown = _dbPath is null
+            ? new List<CandidateReasonRow>()
+            : (await _storage.GetCandidateBreakdownAsync(_dbPath)).ToList();
         if (stats is null)
         {
             TxtSourceBadge.Text = "读取失败（记忆库无法打开）";
@@ -81,8 +84,10 @@ public sealed partial class OverviewView : UserControl
             ? StatusVisuals.BrushOf("failed")
             : (Brush)Application.Current.Resources["MutedTextBrush"];
 
-        TxtCandidateWaiting.Text = $"{stats.CandidateWaiting} 条";
-        TxtCandidateHint.Text = "还需要更多来源证据才能转正为记忆";
+        // 卡片大数与下方明细用同一口径（全部待确认候选），否则会出现「数字对不上明细」
+        var candidateTotal = breakdown.Count > 0 ? breakdown.Sum(row => row.Count) : stats.CandidateWaiting;
+        TxtCandidateWaiting.Text = $"{candidateTotal} 条";
+        TxtCandidateHint.Text = CandidateHintText(breakdown);
 
         TxtDbSize.Text = Exporter.HumanSize(stats.DbSizeBytes);
         TxtDbHint.Text = "记忆库文件当前大小";
@@ -93,10 +98,44 @@ public sealed partial class OverviewView : UserControl
         TxtDataDir.Text = stats.DataDirectory ?? "未记录";
         TxtSchema.Text = $"v{stats.SchemaVersion} · 记忆版本 {stats.MemoryEpoch}";
 
-        var items = BuildHealthItems(stats);
+        var items = BuildHealthItems(stats, breakdown);
         RenderHealth(items, stats);
-        RenderAttention(stats);
+        RenderAttention(stats, breakdown);
         _ = RefreshPluginVersionAsync(items, stats);
+    }
+
+    /// <summary>
+    /// 把「待确认为何没转正」翻译成人话：按数量倒序列出前几档，可转正与不可转正分开说。
+    /// </summary>
+    private static string CandidateHintText(IReadOnlyList<CandidateReasonRow> breakdown)
+    {
+        if (breakdown.Count == 0)
+        {
+            return "还需要更多来源证据才能转正为记忆";
+        }
+        var total = breakdown.Sum(row => row.Count);
+        var lines = new List<string>();
+        long blocked = 0;
+        foreach (var row in breakdown.Take(4))
+        {
+            var label = StatusVisuals.CandidateReasonLabel(row.ProcessingState, row.Reason, out var canPromote);
+            if (!canPromote)
+            {
+                blocked += row.Count;
+            }
+            lines.Add($"• {row.Count} 条：{label}");
+        }
+        var hidden = total - breakdown.Take(4).Sum(row => row.Count);
+        if (hidden > 0)
+        {
+            lines.Add($"• 其余 {hidden} 条：其它原因");
+        }
+        if (blocked > 0)
+        {
+            lines.Add($"→ 其中 {blocked} 条按现行规则无法转正（上游提示词已要求逐字、但模型未遵守），" +
+                      "只能等 30 天休眠归档或由上游修复后重评。");
+        }
+        return string.Join("\n", lines);
     }
 
     private static string FormatRelative(DateTimeOffset ts)
@@ -120,14 +159,19 @@ public sealed partial class OverviewView : UserControl
 
     // ---------- 健康分 ----------
 
-    private static List<HealthItem> BuildHealthItems(OverviewStats stats)
+    private static List<HealthItem> BuildHealthItems(
+        OverviewStats stats, IReadOnlyList<CandidateReasonRow> breakdown)
     {
         var items = new List<HealthItem>();
 
         var proposedRatio = stats.ClaimTotal == 0 ? 0 : (double)stats.ClaimProposed / stats.ClaimTotal;
+        var blockedCount = breakdown.Sum(row => CanPromote(row) ? 0L : row.Count);
+        var blockedDetail = blockedCount > 0
+            ? $"，其中 {blockedCount} 条按规则无法转正（模型改写了原文，等 30 天休眠归档）"
+            : "";
         items.Add(new HealthItem(
             "待确认记忆",
-            $"{stats.ClaimProposed} / {stats.ClaimTotal} 条（{proposedRatio:P0}）尚未转正",
+            $"{stats.ClaimProposed} / {stats.ClaimTotal} 条（{proposedRatio:P0}）尚未转正{blockedDetail}",
             proposedRatio > 0.8 ? HealthState.Danger : proposedRatio > 0.5 ? HealthState.Warn : HealthState.Ok));
 
         items.Add(new HealthItem(
@@ -137,9 +181,11 @@ public sealed partial class OverviewView : UserControl
 
         items.Add(new HealthItem(
             "候选等待证据",
-            stats.CandidateWaiting > 100
-                ? $"{stats.CandidateWaiting} 条候选仍在等待更多来源证据"
-                : $"{stats.CandidateWaiting} 条候选等待证据",
+            blockedCount > 0
+                ? $"{CandidateTotal(stats, breakdown)} 条候选等待证据，其中 {blockedCount} 条按规则无法转正（只能等休眠归档）"
+                : CandidateTotal(stats, breakdown) > 100
+                    ? $"{CandidateTotal(stats, breakdown)} 条候选仍在等待更多来源证据"
+                    : $"{CandidateTotal(stats, breakdown)} 条候选等待证据",
             stats.CandidateWaiting > 400 ? HealthState.Danger : stats.CandidateWaiting > 100 ? HealthState.Warn : HealthState.Ok));
 
         var sizeMb = stats.DbSizeBytes / (1024 * 1024);
@@ -151,6 +197,17 @@ public sealed partial class OverviewView : UserControl
         items.Add(new HealthItem("插件版本", "正在检查是否有新版本…", HealthState.Off));
         return items;
     }
+
+    /// <summary>该候选按现行规则是否还有转正机会（用于区分「能等」与「永远等不到」）。</summary>
+    private static bool CanPromote(CandidateReasonRow row)
+    {
+        StatusVisuals.CandidateReasonLabel(row.ProcessingState, row.Reason, out var canPromote);
+        return canPromote;
+    }
+
+    /// <summary>待确认候选总数（与明细卡同一口径：有明细用明细合计，否则退回 waiting_evidence 计数）。</summary>
+    private static long CandidateTotal(OverviewStats stats, IReadOnlyList<CandidateReasonRow> breakdown) =>
+        breakdown.Count > 0 ? breakdown.Sum(row => row.Count) : stats.CandidateWaiting;
 
     private static int ComputeScore(List<HealthItem> items)
     {
@@ -295,7 +352,7 @@ public sealed partial class OverviewView : UserControl
 
     // ---------- 需要关注 ----------
 
-    private void RenderAttention(OverviewStats stats)
+    private void RenderAttention(OverviewStats stats, IReadOnlyList<CandidateReasonRow> breakdown)
     {
         AttentionList.Children.Clear();
 
@@ -305,13 +362,15 @@ public sealed partial class OverviewView : UserControl
         {
             Add($"有 {stats.WorkFailed} 个后台任务失败，可在「队列」页一键重试", BadgeState.Danger);
         }
+        var blockedCount = breakdown.Sum(row => CanPromote(row) ? 0L : row.Count);
+        if (blockedCount > 0)
+        {
+            Add($"{blockedCount} 条待确认候选因「模型改写原文、值无法逐字溯源」无法转正，" +
+                "将随 30 天休眠归档清理；根治需上游在整合时强制逐字取值", BadgeState.Warn);
+        }
         if (stats.ClaimProposed > 100)
         {
             Add($"有 {stats.ClaimProposed} 条记忆等待确认（候选尚未转正）", BadgeState.Warn);
-        }
-        if (stats.CandidateWaiting > 100)
-        {
-            Add($"有 {stats.CandidateWaiting} 条候选仍在等待来源证据", BadgeState.Info);
         }
         if (AttentionList.Children.Count == 0)
         {

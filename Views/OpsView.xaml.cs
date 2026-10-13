@@ -164,11 +164,11 @@ public sealed partial class OpsView : UserControl
             var preBackup = Path.Combine(preDir, $"memory-before-restore-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.sqlite3");
             var pre = await ProcessRunner.RunAsync(
                 env.Value.VenvPython,
-                $"-m scope_recall.maintenance.cli backup --database \"{env.Value.Db}\" --output \"{preBackup}\"",
+                MaintenanceCli.BackupArgs(env.Value.Db, preBackup),
                 timeoutMs: 600_000);
             if (!pre.Success || !File.Exists(preBackup))
             {
-                TxtRestoreState.Text = $"恢复中止：恢复前备份失败（{FirstLine(pre.StdErr) ?? "未知原因"}）。记忆库未被改动。";
+                TxtRestoreState.Text = $"恢复中止：恢复前备份失败（{MaintenanceCli.FailureText(pre)}）。记忆库未被改动。";
                 TxtRestoreState.Foreground = StatusVisuals.BrushOf("failed");
                 return;
             }
@@ -177,11 +177,11 @@ public sealed partial class OpsView : UserControl
             TxtRestoreState.Text = "正在校验备份文件…";
             var dry = await ProcessRunner.RunAsync(
                 env.Value.VenvPython,
-                $"-m scope_recall.maintenance.cli rollback --current-db \"{env.Value.Db}\" --snapshot \"{_selectedBackup}\"",
+                MaintenanceCli.RollbackArgs(env.Value.Db, _selectedBackup, apply: false),
                 timeoutMs: 600_000);
             if (!dry.Success)
             {
-                TxtRestoreState.Text = $"恢复中止：备份文件校验未通过（{FirstLine(dry.StdErr) ?? FirstLine(dry.StdOut) ?? "未知原因"}）。记忆库未被改动。";
+                TxtRestoreState.Text = $"恢复中止：备份文件校验未通过（{MaintenanceCli.FailureText(dry)}）。记忆库未被改动。";
                 TxtRestoreState.Foreground = StatusVisuals.BrushOf("failed");
                 return;
             }
@@ -190,7 +190,7 @@ public sealed partial class OpsView : UserControl
             TxtRestoreState.Text = "正在恢复…";
             var apply = await ProcessRunner.RunAsync(
                 env.Value.VenvPython,
-                $"-m scope_recall.maintenance.cli rollback --current-db \"{env.Value.Db}\" --snapshot \"{_selectedBackup}\" --apply",
+                MaintenanceCli.RollbackArgs(env.Value.Db, _selectedBackup, apply: true),
                 timeoutMs: 900_000);
 
             if (apply.Success)
@@ -201,7 +201,7 @@ public sealed partial class OpsView : UserControl
             }
             else
             {
-                TxtRestoreState.Text = $"✗ 恢复失败（退出码 {apply.ExitCode}）：{FirstLine(apply.StdErr) ?? FirstLine(apply.StdOut) ?? "未知原因"}。" +
+                TxtRestoreState.Text = $"✗ 恢复失败：{MaintenanceCli.FailureText(apply)}。" +
                                        $"恢复前的备份仍保留在：{Path.GetFileName(preBackup)}";
                 TxtRestoreState.Foreground = StatusVisuals.BrushOf("failed");
             }
@@ -301,7 +301,7 @@ public sealed partial class OpsView : UserControl
 
             var r = await ProcessRunner.RunAsync(
                 env.Value.VenvPython,
-                $"-m scope_recall.maintenance.cli backup --database \"{env.Value.Db}\" --output \"{target}\"",
+                MaintenanceCli.BackupArgs(env.Value.Db, target),
                 timeoutMs: 600_000);
 
             if (r.Success && File.Exists(target))
@@ -311,7 +311,7 @@ public sealed partial class OpsView : UserControl
             }
             else
             {
-                TxtBackupState.Text = $"备份失败（exit {r.ExitCode}）：{FirstLine(r.StdErr) ?? FirstLine(r.StdOut) ?? "未知错误"}";
+                TxtBackupState.Text = $"备份失败：{MaintenanceCli.FailureText(r)}";
             }
 
         });
@@ -345,14 +345,26 @@ public sealed partial class OpsView : UserControl
             }
 
             TxtMaintenanceState.Text = $"正在执行 {command}…";
+            // 官方契约：config 类子命令的 --config 必给（漏传即 exit 2 只打 usage），
+            // 且不带 --apply 只是预演；respace-embeddings 缺省动作是只读 status，须显式 --start。
+            var args = MaintenanceCli.RequiresConfig(command)
+                ? MaintenanceCli.Build(env.Value.Root, command, apply: true, extra: MaintenanceCli.ActionSwitch(command))
+                : $"{MaintenanceCli.Module} {command}";
             var r = await ProcessRunner.RunAsync(
                 env.Value.VenvPython,
-                $"-m scope_recall.maintenance.cli {command}",
+                args,
                 timeoutMs: 1_800_000);
+
+            if (r.Success && MaintenanceCli.IsPreviewOnly(r.StdOut))
+            {
+                TxtMaintenanceState.Text =
+                    $"{command} 只完成了预演（回执 applied=false），记忆库未被改动。\n{FirstLines(r.StdOut, 8)}";
+                return;
+            }
 
             TxtMaintenanceState.Text = r.Success
                 ? $"{command} 完成（exit 0）。\n{FirstLines(r.StdOut, 8)}"
-                : $"{command} 失败（exit {r.ExitCode}）：{FirstLine(r.StdErr) ?? FirstLine(r.StdOut) ?? "未知错误"}";
+                : $"{command} 失败：{MaintenanceCli.FailureText(r)}";
 
         });
     }
@@ -378,16 +390,6 @@ public sealed partial class OpsView : UserControl
         "upgrade-store" => "将把记忆库的数据结构升级到当前版本（升级前会自动备份）。",
         _ => $"将执行维护操作：{command}。",
     };
-
-    private static string? FirstLine(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return null;
-        }
-        var line = text.Split('\n')[0].Trim();
-        return line.Length == 0 ? null : line;
-    }
 
     private static string FirstLines(string text, int count)
     {

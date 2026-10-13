@@ -10,7 +10,7 @@
 ;        b) RID publish 不会复制 XAML 编译产物，需手动补齐：
 ;           bin\x64\Release\<tfm>\win-x64\**\*.xbf  →  publish\run\（保持相对路径）
 ;           bin\x64\Release\<tfm>\win-x64\*.pri      →  publish\run\
-;   2. ISCC.exe setup.iss  →  out\ScopeRecallWin-Setup-1.1.0.exe
+;   2. ISCC.exe setup.iss  →  out\ScopeRecallWin-Setup-1.3.1.exe
 ;
 ; 目标机需已安装 Windows App Runtime 1.8（框架依赖模式的前提；
 ; 随本仓库 Release 提供 Microsoft.WindowsAppRuntime.1.8.msix）。
@@ -18,7 +18,7 @@
 
 #define MyAppName "Scope Recall"
 #define MyAppNameZh "范围检索 · Scope Recall"
-#define MyAppVersion "1.3.0"
+#define MyAppVersion "1.3.1"
 #define MyAppExeName "ScopeRecallWin.exe"
 #define MyAppPublisher "phfqy"
 #define MyAppURL "https://github.com/phfqy/scope-recall-win"
@@ -35,7 +35,7 @@ DefaultDirName={localappdata}\Programs\ScopeRecallWin
 PrivilegesRequired=lowest
 DisableProgramGroupPage=yes
 OutputDir=out
-OutputBaseFilename=ScopeRecallWin-Setup-1.3.0
+OutputBaseFilename=ScopeRecallWin-Setup-1.3.1
 SetupIconFile=app.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/max

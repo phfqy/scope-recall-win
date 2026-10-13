@@ -68,6 +68,61 @@ public static class StatusVisuals
     /// <summary>是否为成功类状态。</summary>
     public static bool IsSuccess(string? raw) => SuccessWords.Contains(Normalize(raw));
 
+    // ---------- 候选卡住原因（candidate_lifecycle.reason）人话 ----------
+
+    /// <summary>
+    /// 候选为什么停在某个状态/原因（解释「待确认为何没转正」）。
+    /// 上游规则见 core/evidence_question.py 与 core/candidate_sweeps.py。
+    /// </summary>
+    /// <param name="canPromote">true = 还有机会转正；false = 制度性不可转正（只能等休眠归档）。</param>
+    public static string CandidateReasonLabel(string processingState, string reason, out bool canPromote)
+    {
+        var key = $"{Normalize(processingState)}|{Normalize(reason)}";
+        canPromote = true;
+        switch (key)
+        {
+            case "waiting_evidence|value_not_in_evidence":
+                canPromote = false;
+                return "模型改写了原文（常见为译成英文），值无法在来源原文里逐字找到——按规则无法转正，等 30 天无新证据后自动归档";
+            case "waiting_evidence|no_authoritative_evidence":
+                canPromote = false;
+                return "缺少权威来源（需本人或文档的原话），工具输出不算";
+            case "waiting_evidence|authority_revoked":
+                canPromote = false;
+                return "原先授权它的人员/文档已撤回";
+            case "waiting_evidence|repeat_without_restatement":
+                return "重复出现但没有新的表述，需要新的说法才能转正";
+            case "waiting_evidence|evaluated_waiting_evidence":
+                return "已评估过一次，仍在等更多证据";
+            case "waiting_evidence|evaluation_failed":
+                return "上一次评估失败，等下一轮重试";
+            case "waiting_evidence|insufficient_evidence":
+                return "证据不足，需要更多来源";
+            case "waiting_evidence|":
+                return "等待更多来源证据";
+            case "pending_evaluation|new_evidence":
+                return "来了新证据，已排队等待重新评估";
+            case "pending_evaluation|operator_retry":
+                return "运维重试中（已重新排队）";
+            case "pending_evaluation|":
+                return "已排队等待评估";
+            case "archived|superseded_by_candidate_revision":
+                canPromote = false;
+                return "已被更新的候选版本取代";
+            case "archived|dormant_no_evidence":
+                canPromote = false;
+                return "长期没有新证据，休眠归档";
+            case "resolved|fact_active":
+                canPromote = false;
+                return "已转正为生效记忆";
+            default:
+                var label = StateLabels.TryGetValue(reason.Trim(), out var zh) ? zh
+                    : StateLabels.TryGetValue(processingState.Trim(), out var zh2) ? zh2
+                    : (reason.Length > 0 ? reason : processingState);
+                return label;
+        }
+    }
+
     // ---------- 中文标签 ----------
 
     private static readonly Dictionary<string, string> StateLabels = new(StringComparer.OrdinalIgnoreCase)

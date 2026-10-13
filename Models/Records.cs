@@ -24,6 +24,12 @@ public sealed record HealthItem(string Name, string Detail, HealthState State);
 
 public enum HealthState { Ok, Warn, Danger, Off }
 
+/// <summary>
+/// 待确认候选按「状态 + 卡住原因」的分布（解释「待确认为何没转正」）。
+/// 只统计当前版本仍为 proposed 的候选，与总览页的「待确认」口径一致。
+/// </summary>
+public sealed record CandidateReasonRow(string ProcessingState, string Reason, long Count);
+
 // ---------- 记忆 ----------
 
 /// <summary>claim 列表行。</summary>
