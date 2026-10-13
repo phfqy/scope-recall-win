@@ -38,8 +38,8 @@
         </Grid>
 
         <!-- 内容区：视图宿主 + 呼出式顶栏搜索。
-             搜索栏不再常驻占位：默认收起，滚轮上滑从顶部滑出、下滑收起
-             （逻辑在 MainWindow.RootGrid_PointerWheelChanged，捕获已处理的滚轮事件）。 -->
+             搜索栏不再常驻占位：默认收起，Ctrl+T 呼出/收起（Esc 也可收起），
+             逻辑在 MainWindow.AnimateSearchBar；浮层压在内容之上、不挤压布局。 -->
         <Grid Grid.Column="1">
             <ContentControl x:Name="ContentHost"
                             HorizontalContentAlignment="Stretch"
@@ -74,7 +74,7 @@
                         <FontIcon Grid.Column="0" Glyph="&#xE721;" FontSize="15"
                                   Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
                         <TextBox Grid.Column="1" x:Name="TxtGlobalSearch"
-                                 PlaceholderText="在全部记忆中搜索…（Enter 检索，Ctrl+F 聚焦）"
+                                 PlaceholderText="在全部记忆中搜索…（Enter 检索，Ctrl+T 呼出/收起，Esc 关闭）"
                                  BorderThickness="0" Background="Transparent" Padding="0,6"
                                  KeyDown="TxtGlobalSearch_KeyDown" />
                     </Grid>

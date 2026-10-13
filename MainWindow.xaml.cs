@@ -136,7 +136,7 @@ public sealed partial class MainWindow : Window
         accelerator.Invoked += (_, _) => TogglePalette();
         RootGrid.KeyboardAccelerators.Add(accelerator);
 
-        // Ctrl+F：呼出顶栏全局搜索框并聚焦（搜索栏默认收起，见 RootGrid_PointerWheelChanged）
+        // Ctrl+F：呼出顶栏全局搜索框并聚焦（搜索栏默认收起）
         var focusSearch = new KeyboardAccelerator
         {
             Key = VirtualKey.F,
@@ -149,13 +149,22 @@ public sealed partial class MainWindow : Window
         };
         RootGrid.KeyboardAccelerators.Add(focusSearch);
 
-        // 滚轮呼出/收起顶栏搜索：上滑呼出、下滑收起。
-        // 用 handledEventsToo=true 捕获已被内部 ScrollViewer 吃掉的滚轮事件 ——
-        // 这样指针悬停在任意列表/页面上滚动也生效（内容照常滚动，顶栏只跟随方向）。
-        RootGrid.AddHandler(
-            UIElement.PointerWheelChangedEvent,
-            new PointerEventHandler(RootGrid_PointerWheelChanged),
-            handledEventsToo: true);
+        // Ctrl+T：呼出 / 收起顶栏全局搜索（呼出时自动聚焦输入框）
+        var toggleSearch = new KeyboardAccelerator
+        {
+            Key = VirtualKey.T,
+            Modifiers = VirtualKeyModifiers.Control,
+        };
+        toggleSearch.Invoked += (_, _) =>
+        {
+            var show = !_searchBarShown;
+            AnimateSearchBar(show);
+            if (show)
+            {
+                TxtGlobalSearch.Focus(FocusState.Programmatic);
+            }
+        };
+        RootGrid.KeyboardAccelerators.Add(toggleSearch);
 
         // 外观：应用保存的主题设置（含标题栏配色，避免顶栏与内容区色调不一致）
         ThemeService.Apply(App.Settings.Theme);
@@ -252,20 +261,6 @@ public sealed partial class MainWindow : Window
     private bool _searchBarShown;
     private Storyboard? _searchBarStory;
 
-    /// <summary>滚轮方向驱动顶栏搜索的呼出/收起：上滑（delta &gt; 0）呼出，下滑收起。</summary>
-    private void RootGrid_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
-    {
-        var delta = e.GetCurrentPoint(RootGrid).Properties.MouseWheelDelta;
-        if (delta > 0)
-        {
-            AnimateSearchBar(show: true);
-        }
-        else if (delta < 0)
-        {
-            AnimateSearchBar(show: false);
-        }
-    }
-
     /// <summary>搜索栏滑入/滑出动画：位移 -80dp ↔ 0，透明度 0 ↔ 1，180ms 缓出。</summary>
     private void AnimateSearchBar(bool show)
     {
@@ -322,6 +317,17 @@ public sealed partial class MainWindow : Window
         if (e.Key == VirtualKey.Enter)
         {
             RunGlobalSearch();
+        }
+        else if (e.Key == VirtualKey.Escape)
+        {
+            // Esc：收起呼出式搜索栏（输入框为空时直接收，有内容则先清空）
+            e.Handled = true;
+            if (!string.IsNullOrWhiteSpace(TxtGlobalSearch.Text))
+            {
+                TxtGlobalSearch.Text = "";
+                return;
+            }
+            AnimateSearchBar(show: false);
         }
     }
 
