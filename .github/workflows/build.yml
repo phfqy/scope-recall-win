@@ -54,15 +54,27 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Produce MSIX (unsigned)
+      - name: Publish unpackaged (self-contained, x64)
         run: >
-          dotnet publish scope-recall-win.csproj -p:Platform=x64 -c Release
-          -p:GenerateAppxPackageOnBuild=true
-          -p:AppxPackageSigningEnabled=false
+          dotnet publish scope-recall-win.csproj -p:Platform=x64 -c Release -r win-x64
+          -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true
+          -o installer/publish/run
 
-      - name: Upload MSIX artifact
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build setup exe
+        shell: pwsh
+        run: |
+          $iscc = Get-ChildItem "C:\Program Files (x86)\Inno Setup*" -Recurse -Filter ISCC.exe |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $iscc) { throw "ISCC.exe not found" }
+          & $iscc installer\setup.iss
+
+      - name: Upload setup exe artifact
         uses: actions/upload-artifact@v4
         with:
-          name: msix-x64
-          path: AppPackages/**/*.msix
+          name: setup-exe-x64
+          path: installer/out/ScopeRecallWin-Setup-1.0.0.exe
           if-no-files-found: error

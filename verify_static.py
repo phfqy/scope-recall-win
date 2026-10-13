@@ -1,12 +1,12 @@
 """scope-recall-win 静态验证（Linux/无 SDK 环境下的尽调检查）。
 
 覆盖：
-  V1  XAML/appxmanifest/app.manifest XML 良构
+  V1  XAML/app.manifest XML 良构
   V2  StaticResource 引用 vs 资源字典定义（缺失即 XAML 编译/运行期炸）
   V3  x:Class 与代码隐藏类名/文件一一对应
   V4  MainWindow 路由表 18 项 ↔ 导航 18 项 ↔ 视图文件存在
   V5  C# 括号/方括号/圆括号配平 + namespace 一致
-  V6  Assets PNG 有效且尺寸符合 appxmanifest 声明
+  V6  installer/ 安装器产物存在且有效（app.ico / setup.iss）
   V7  上游口径残留扫描（mutate CLI / create 变更 / deleted 状态 等禁用表述）
 """
 from __future__ import annotations
@@ -44,7 +44,6 @@ def fail(msg: str) -> None:
 
 # ---------- V1 XML 良构 ----------
 xml_files = sorted(source_files("*.xaml")) + [
-    ROOT / "Package.appxmanifest",
     ROOT / "app.manifest",
 ]
 for f in xml_files:
@@ -98,10 +97,10 @@ for f in sorted(source_files("*.xaml")):
 ok.append("V3 x:Class ↔ 代码隐藏: 全部匹配")
 
 # ---------- V4 路由表 ↔ 导航 ↔ 视图 ----------
+# 导航为代码动态生成（unpackaged 形态自建导航）：NavGroups 元组第一项即 Tag。
 mw = (ROOT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
-mw_xaml = (ROOT / "MainWindow.xaml").read_text(encoding="utf-8")
 route_tags = set(re.findall(r'\["([\w-]+)"\]\s*=\s*typeof\(Views\.(\w+)\)', mw))
-nav_tags = set(re.findall(r'Tag="([\w-]+)"', mw_xaml))
+nav_tags = set(re.findall(r'\(\s*"([\w-]+)"\s*,\s*"[^"]*"\s*,\s*"\\u[0-9A-Fa-f]{4}"', mw))
 view_files = {p.stem for p in (ROOT / "Views").glob("*.xaml")}
 for tag, view in route_tags:
     if view not in view_files:
@@ -141,31 +140,19 @@ for f in sorted(source_files("*.xaml")):
                 fail(f"V5b {f.relative_to(ROOT)} L{line} 属性 {m.group(1)} 含未转义 '&'")
 ok.append("V5b XAML 属性值: 无裸 < / 未转义 &")
 
-# ---------- V6 PNG ----------
-from PIL import Image
-
-expected = {
-    "StoreLogo.png": (50, 50),
-    "Square44x44Logo.png": (44, 44),
-    "Square150x150Logo.png": (150, 150),
-    "SmallTile.png": (71, 71),
-    "LargeTile.png": (310, 310),
-    "Wide310x150Logo.png": (310, 150),
-}
-appx = (ROOT / "Package.appxmanifest").read_text(encoding="utf-8")
-for name, size in expected.items():
-    p = ROOT / "Assets" / name
-    if not p.exists():
-        fail(f"V6 缺图标 {name}")
-        continue
-    if name not in appx.replace("\\", "/"):
-        fail(f"V6 {name} 未被 Package.appxmanifest 引用")
-    with Image.open(p) as im:
-        im.verify()
-    with Image.open(p) as im:
-        if im.size != size:
-            fail(f"V6 {name} 尺寸 {im.size} ≠ 预期 {size}")
-ok.append("V6 PNG: 6 张图标有效且尺寸/引用匹配 appxmanifest")
+# ---------- V6 安装器产物 ----------
+ico = ROOT / "installer" / "app.ico"
+iss = ROOT / "installer" / "setup.iss"
+isl = ROOT / "installer" / "ChineseSimplified.isl"
+for f in (ico, iss, isl):
+    if not f.exists():
+        fail(f"V6 缺安装器文件 {f.relative_to(ROOT)}")
+if iss.exists():
+    iss_text = iss.read_text(encoding="utf-8")
+    for token in ("ScopeRecallWin-Setup-1.0.0", "PrivilegesRequired=lowest"):
+        if token not in iss_text:
+            fail(f"V6 setup.iss 缺少关键配置: {token}")
+ok.append("V6 安装器: app.ico / setup.iss / ChineseSimplified.isl 齐备")
 
 # ---------- V7 上游口径残留 ----------
 banned = [

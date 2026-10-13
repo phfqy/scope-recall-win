@@ -9,31 +9,51 @@ Scope Recall v3 记忆核心的 Windows 桌面管理控制台。**WinUI 3（Wind
 18 视图全功能规划，UI 采用 Fluent Design 自由设计（不复制 WebUI 风格），功能覆盖以
 `WIN-APP-PROMPTS.md` 的【附 1 功能全景对照表】为准。
 
+**分发形态：unpackaged exe 桌面安装版**（Inno Setup，per-user 免管理员安装）。
+本仓库不产出、不分发 MSIX。
+
 **📦 直接下载安装**：[Releases → v1.0.0](https://github.com/phfqy/scope-recall-win/releases/latest)
-（`scope-recall-win_1.0.0.0_x64.msix`，含安装说明与 SHA256）
+（`ScopeRecallWin-Setup-1.0.0.exe`，16.4 MB，含安装说明与 SHA256）
 
 > 本目录是 **P0 骨架**：可打开、可导航、主题可切换，服务层为接口/占位实现。
 > P1（视图与交互）、P2（读写数据通道）、P3（runtime-config 编辑器 + worker 启停）、
 > P4（更新/安装卸载/共享 store/托盘/自启）按提示词包逐项填充。
 >
 > 2026-10-13 修复轮（依据《ScopeRecall-开发测试报告》5.2 优先级）：P0-1 补齐 csproj 与
-> app.manifest；P0-2 补齐 9 个缺失视图并重写 OpsView.xaml；P0-3 补齐 Assets/ 6 张 MSIX
-> 图标（generate_icons.py 可复现）；P1-1 重设计 MutateService（对齐上游 revise/forget
-> 工具面，删除 create 枚举）；P1-2 Claims 状态口径改五状态 + suppressed 列；P1-3 文案对齐。
+> app.manifest；P0-2 补齐 9 个缺失视图并重写 OpsView.xaml；P1-1 重设计 MutateService
+> （对齐上游 revise/forget 工具面，删除 create 枚举）；P1-2 Claims 状态口径改五状态 +
+> suppressed 列；P1-3 文案对齐。
 >
 > 2026-10-13 编译轮：装 .NET 8 SDK 后在 Windows 11 实测 **dotnet build / publish 通过**，
 > 修复 3 个编译级问题（MicaKind 命名空间在 Microsoft.UI.Composition.SystemBackdrops；
-> WinUI 3 无 TextCharacterSpacing 改用 CharacterSpacing；startupTask 扩展 Executable
-> token 不替换改为缺省主程序 + EntryPoint=Windows.FullTrustApplication），
-> WindowsAppSDK 升级 1.6→1.8，产出签名 MSIX 成品。
+> WinUI 3 无 TextCharacterSpacing 改用 CharacterSpacing；unpackaged 下自建导航替换
+> Frame/NavigationView），WindowsAppSDK 升级 1.6→1.8，产出 exe 安装版成品。
+>
+> 2026-10-13 安装轮：分发形态锁定 unpackaged + Inno Setup。移除 MSIX 打包链
+> （Package.appxmanifest / install_msix.ps1 / MSIX 磁贴图标），自启改注册表 Run key 方案。
 
-## 打开方式（Windows）
+## 安装（Windows，免管理员）
+
+下载 [Release 附件](https://github.com/phfqy/scope-recall-win/releases/latest) 的
+`ScopeRecallWin-Setup-1.0.0.exe`，双击运行：
+
+- per-user 安装到 `%LOCALAPPDATA%\Programs\ScopeRecallWin`，**无需管理员权限**
+- 自动创建开始菜单 + 桌面快捷方式，自带标准卸载器（设置 → 应用 → 卸载）
+- unpackaged 自包含形态，内置 Windows App SDK 运行时，不依赖 MSIX 部署
+
+静默安装：
+
+```powershell
+ScopeRecallWin-Setup-1.0.0.exe /VERYSILENT
+```
+
+## 打开方式（源码运行 / 二次构建）
 
 ### 方式 A：Visual Studio 2022
 
 1. 安装 VS2022（工作负载：**.NET 桌面开发** + **Windows 应用 SDK**，勾选"Windows 应用 SDK C# 模板"）。
 2. 打开 `scope-recall-win.csproj`（首次自动 NuGet 还原）。
-3. 平台选 `x64`，`F5` 运行（MSIX packaged 部署）。
+3. 平台选 `x64`，`F5` 运行（unpackaged 桌面形态）。
 
 ### 方式 B：.NET CLI（无需 VS，已验证）
 
@@ -42,43 +62,43 @@ Scope Recall v3 记忆核心的 Windows 桌面管理控制台。**WinUI 3（Wind
 winget install Microsoft.DotNet.SDK.8
 #    或：https://dot.net/v1/dotnet-install.ps1 脚本安装
 
-# 2. 构建（x64）
+# 2. 构建（x64，unpackaged）
 dotnet build scope-recall-win.csproj -p:Platform=x64
 
-# 3. 产出可安装 MSIX（已用测试证书签名）
-dotnet publish scope-recall-win.csproj -p:Platform=x64 -c Release `
-  -p:GenerateAppxPackageOnBuild=true -p:AppxPackageSigningEnabled=true `
-  -p:PackageCertificateThumbprint=<你的证书指纹>
-# 产物：AppPackages\scope-recall-win_1.0.0.0_x64_Test\scope-recall-win_1.0.0.0_x64.msix
+# 3. 发布自包含 unpackaged 产物（内置 Windows App SDK 运行时）
+dotnet publish scope-recall-win.csproj -p:Platform=x64 -c Release -r win-x64 `
+  -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true `
+  -o ..\..\publish\run
 ```
 
 > ⚠️ **WindowsAppSDK 版本**：工程锁定 `Microsoft.WindowsAppSDK 1.8.260921001`（1.x 末代稳定版）。
 > 1.6 的外部 `XamlCompiler.exe` 在部分环境被安全策略静默拦截（exit 1 无输出），1.7+ 的
 > in-proc XAML 编译已修复该问题——升级路径即此。
 
-> ⚠️ **签名**：交付用 MSIX 需有效代码签名证书（证书 Subject 须与 `Package.appxmanifest`
-> 的 `Publisher` 一致）。开发/测试可自签名：`New-SelfSignedCertificate -Type CodeSigningCert`，
-> 经 `certutil -user -addstore Root <cer>` 导入当前用户根存储后即可 sideload。
+> ⚠️ **unpackaged 注意**：csproj 已设 `WindowsPackageType=None` +
+> `WindowsAppSdkBootstrapInitialize`（进程启动时先激活 Windows App Runtime 再进 XAML）。
+> 缺它以普通 exe 直接运行会 `0xC000027B` fail-fast（try/catch 捕不到）。
 
-### 运行/安装
+### 从源码制作安装包（Inno Setup 6）
 
-- VS F5 / `dotnet build` 后由开发机直接部署（packaged 模式）。
-- 分发 `.msix`：目标机安装依赖 `Microsoft.WindowsAppRuntime.1.8.msix`（随包 Dependencies 目录），
-  再 `Add-AppxPackage -Path xxx.msix -DependencyPath ...\Microsoft.WindowsAppRuntime.1.8.msix`。
-- 本仓库附带的 `install_msix.ps1` 演示"导入测试证书 → 安装 → 启动 → 截图"的完整冒烟流程
-  （需以管理员身份运行一次）。
+```powershell
+# 接上面第 3 步的 publish 输出（installer/publish/run），然后：
+ISCC.exe installer\setup.iss
+# 产物：installer\out\ScopeRecallWin-Setup-1.0.0.exe
+```
 
 ## 目录结构
 
 ```
 scope-recall-win/
-├── scope-recall-win.csproj        # WinUI 3 + WindowsAppSDK + MVVM + Microsoft.Data.Sqlite
-├── Assets/                        # MSIX 图标（StoreLogo/Square44/150/Wide310/SmallTile/LargeTile）
-├── generate_icons.py              # 图标生成脚本（Pillow，可复现 Assets/）
+├── scope-recall-win.csproj        # WinUI 3 + WindowsAppSDK + MVVM + Microsoft.Data.Sqlite（unpackaged）
+├── installer/                     # Inno Setup 桌面安装包
+│   ├── setup.iss                  # 安装器脚本（per-user 免管理员 / 中英文 / 快捷方式）
+│   ├── app.ico                    # 安装器与快捷方式图标
+│   └── ChineseSimplified.isl      # 简体中文安装语言文件
 ├── app.manifest                   # DPI 感知（PerMonitorV2）
-├── Package.appxmanifest           # MSIX 打包；已声明 StartupTask（默认关闭）
 ├── App.xaml / App.xaml.cs         # 应用入口；主题字典装配
-├── MainWindow.xaml / .cs          # 236px 分组导航 + Frame + Mica + ⌘K 浮层 + 页面滑动动画
+├── MainWindow.xaml / .cs          # 236px 分组导航 + ContentHost + Mica + ⌘K 浮层 + 页面滑动动画
 ├── Theme/
 │   ├── ColorsAndBrushes.xaml      # 语义色（Success/Warning/Danger/Info）+ 等宽字体
 │   ├── Dark.xaml / Light.xaml     # 明暗两套 token（Fluent）
@@ -100,10 +120,11 @@ scope-recall-win/
 │   ├── UpdateService.cs           # 版本检查（P4：GitHub release + 镜像）
 │   ├── CredentialService.cs       # 凭据（P3：Windows Credential Manager，Key 不明文）
 │   ├── TrayService.cs             # 托盘占位（P4）
-│   └── StartupService.cs          # 开机自启占位（P4：MSIX StartupTask）
-└── Helpers/
-    ├── TimestampNormalizer.cs     # +00:00 微秒 与 Z 两种时间戳归一
-    └── CsvExporter.cs             # CSV 转义 + 公式注入防护（= + - @ 前置单引号）
+│   └── StartupService.cs          # 开机自启占位（P4：注册表 Run key）
+├── Helpers/
+│   ├── TimestampNormalizer.cs     # +00:00 微秒 与 Z 两种时间戳归一
+│   └── CsvExporter.cs             # CSV 转义 + 公式注入防护（= + - @ 前置单引号）
+└── verify_static.py               # 静态验证（7 类检查，CI 必过）
 ```
 
 ## 设计参考（GitHub 开源方案与动画效果）
