@@ -73,6 +73,16 @@
         <Setter Property="Padding" Value="14,6" />
     </Style>
 
+    <!-- ============ 主操作按钮（浅色强调底 + 深色字，用于"保存/确认"这类正向动作） ============ -->
+    <Style x:Key="AccentButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource AccentInkBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="16,7" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
     <!-- ============ 顶栏工具按钮（图标按钮统一） ============ -->
     <Style x:Key="IconButtonStyle" TargetType="Button">
         <Setter Property="Width" Value="36" />

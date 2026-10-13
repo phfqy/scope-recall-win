@@ -1,128 +1,136 @@
 <UserControl
     x:Class="ScopeRecallWin.Views.OverviewView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:controls="using:ScopeRecallWin.Controls">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <Grid>
-        <ScrollViewer>
-            <StackPanel Padding="26" Spacing="14" MaxWidth="960">
+    <ScrollViewer>
+        <StackPanel Padding="26" Spacing="14" MaxWidth="960">
 
-                <Grid ColumnSpacing="10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="总览" Style="{StaticResource PageTitleTextStyle}" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}"
+                               Text="记忆库的整体情况。所有数据都来自本机记忆库，实时读取。" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Border x:Name="SourceBadge" CornerRadius="4" Padding="8,3"
+                            Background="{StaticResource Surface2Brush}">
+                        <TextBlock x:Name="TxtSourceBadge" Text="正在读取…" FontSize="11.5"
+                                   Foreground="{StaticResource MutedTextBrush}" />
+                    </Border>
+                    <Button x:Name="BtnRefresh" Content="刷新" Click="BtnRefresh_Click" />
+                </StackPanel>
+            </Grid>
+
+            <!-- ============ 一句话结论 ============ -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock x:Name="TxtHealthScore" Text="—" FontSize="40"
+                                   FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock x:Name="TxtHealthTitle" Text="正在检查…" FontSize="16"
+                                       FontWeight="SemiBold" />
+                            <TextBlock x:Name="TxtHealthSummary" Style="{StaticResource PageDescTextStyle}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <ProgressBar x:Name="HealthBar" Maximum="100" />
+
+                    <Expander Header="查看评分明细（5 项）" HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Stretch">
+                        <StackPanel x:Name="HealthList" Spacing="8" Padding="0,8,0,0" />
+                    </Expander>
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 四个关键数字 ============ -->
+            <Grid ColumnSpacing="10" RowSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource CardBorderStyle}">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="记忆条目" Style="{StaticResource PageDescTextStyle}" />
+                        <TextBlock x:Name="TxtClaimTotal" Text="—" FontSize="26" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TxtClaimHint" Style="{StaticResource MonoTextStyle}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource CardBorderStyle}">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="后台任务" Style="{StaticResource PageDescTextStyle}" />
+                        <TextBlock x:Name="TxtWorkTotal" Text="—" FontSize="26" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TxtWorkHint" Style="{StaticResource MonoTextStyle}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource CardBorderStyle}">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="待确认候选" Style="{StaticResource PageDescTextStyle}" />
+                        <TextBlock x:Name="TxtCandidateWaiting" Text="—" FontSize="26" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TxtCandidateHint" Style="{StaticResource MonoTextStyle}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource CardBorderStyle}">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="记忆库占用" Style="{StaticResource PageDescTextStyle}" />
+                        <TextBlock x:Name="TxtDbSize" Text="—" FontSize="26" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TxtDbHint" Style="{StaticResource MonoTextStyle}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ============ 需要关注 ============ -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="需要关注" />
+                    <StackPanel x:Name="AttentionList" Spacing="8" />
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 更多信息（折叠） ============ -->
+            <Expander Header="更多信息（事件数量 / 记忆库位置 / 版本）" HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch">
+                <Grid Padding="0,8,0,0" ColumnSpacing="12" RowSpacing="6">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="总览" Style="{StaticResource PageTitleTextStyle}" />
-                        <TextBlock Style="{StaticResource PageDescTextStyle}"
-                                   Text="记忆库规模、健康分与需要关注的事项。全部数据来自本机只读查询。" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <Border x:Name="SourceBadge" CornerRadius="4" Padding="8,3"
-                                Background="{StaticResource Surface2Brush}">
-                            <TextBlock x:Name="TxtSourceBadge" Text="检测中…" FontSize="11.5"
-                                       Foreground="{StaticResource MutedTextBrush}" />
-                        </Border>
-                        <Button x:Name="BtnRefresh" Content="刷新" Click="BtnRefresh_Click" />
-                    </StackPanel>
-                </Grid>
-
-                <!-- 统计卡 -->
-                <Grid ColumnSpacing="10" RowSpacing="10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition />
-                        <ColumnDefinition />
-                        <ColumnDefinition />
+                        <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource CardBorderStyle}">
-                        <StackPanel>
-                            <TextBlock Text="记忆总数" Style="{StaticResource PageDescTextStyle}" />
-                            <TextBlock x:Name="TxtClaimTotal" Text="—" FontSize="24"
-                                       FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
-                            <TextBlock x:Name="TxtClaimSplit" Text="" Style="{StaticResource MonoTextStyle}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource CardBorderStyle}">
-                        <StackPanel>
-                            <TextBlock Text="记忆事件" Style="{StaticResource PageDescTextStyle}" />
-                            <TextBlock x:Name="TxtEventTotal" Text="—" FontSize="24"
-                                       FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
-                            <TextBlock x:Name="TxtNewestEvent" Text="" Style="{StaticResource MonoTextStyle}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource CardBorderStyle}">
-                        <StackPanel>
-                            <TextBlock Text="存储占用" Style="{StaticResource PageDescTextStyle}" />
-                            <TextBlock x:Name="TxtDbSize" Text="—" FontSize="24"
-                                       FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
-                            <TextBlock x:Name="TxtSchema" Text="" Style="{StaticResource MonoTextStyle}" />
-                        </StackPanel>
-                    </Border>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="记忆事件" Style="{StaticResource PageDescTextStyle}" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" x:Name="TxtEventTotal" Style="{StaticResource MonoTextStyle}" />
 
-                    <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource CardBorderStyle}">
-                        <StackPanel>
-                            <TextBlock Text="待处理候选" Style="{StaticResource PageDescTextStyle}" />
-                            <TextBlock x:Name="TxtCandidateWaiting" Text="—" FontSize="24"
-                                       FontWeight="SemiBold" Foreground="{StaticResource WarningBrush}" />
-                            <TextBlock Text="waiting_evidence 状态" Style="{StaticResource MonoTextStyle}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource CardBorderStyle}">
-                        <StackPanel>
-                            <TextBlock Text="后台任务" Style="{StaticResource PageDescTextStyle}" />
-                            <TextBlock x:Name="TxtWorkTotal" Text="—" FontSize="24"
-                                       FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
-                            <TextBlock x:Name="TxtWorkSplit" Text="" Style="{StaticResource MonoTextStyle}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource CardBorderStyle}">
-                        <StackPanel>
-                            <TextBlock Text="记忆库位置" Style="{StaticResource PageDescTextStyle}" />
-                            <TextBlock x:Name="TxtDataDir" Text="—" FontSize="13" TextWrapping="Wrap"
-                                       Foreground="{StaticResource TextBrush}" />
-                            <TextBlock x:Name="TxtAgentId" Text="" Style="{StaticResource MonoTextStyle}" />
-                        </StackPanel>
-                    </Border>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="最近活动" Style="{StaticResource PageDescTextStyle}" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" x:Name="TxtNewestEvent" Style="{StaticResource MonoTextStyle}" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="记忆库位置" Style="{StaticResource PageDescTextStyle}" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" x:Name="TxtDataDir" Style="{StaticResource MonoTextStyle}"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="数据结构版本" Style="{StaticResource PageDescTextStyle}" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" x:Name="TxtSchema" Style="{StaticResource MonoTextStyle}" />
                 </Grid>
+            </Expander>
 
-                <!-- 健康分 -->
-                <Border Style="{StaticResource CardBorderStyle}">
-                    <StackPanel Spacing="10">
-                        <Grid ColumnSpacing="16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" x:Name="TxtHealthScore" Text="—" FontSize="34"
-                                       FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
-                                       VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock Text="记忆健康分" Style="{StaticResource PageDescTextStyle}" />
-                                <ProgressBar x:Name="HealthBar" Maximum="100" Margin="0,4,0,0" />
-                            </StackPanel>
-                        </Grid>
-                        <TextBlock Text="扣分项（WebUI 同口径）" Style="{StaticResource SectionHeaderTextStyle}" />
-                        <StackPanel x:Name="HealthList" Spacing="6" />
-                    </StackPanel>
-                </Border>
-
-                <!-- 需要关注 -->
-                <Border Style="{StaticResource CardBorderStyle}">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="需要关注" Style="{StaticResource SectionHeaderTextStyle}" />
-                        <StackPanel x:Name="AttentionList" Spacing="8" />
-                    </StackPanel>
-                </Border>
-
-            </StackPanel>
-        </ScrollViewer>
-
-        <controls:DetailDrawer x:Name="Drawer" />
-    </Grid>
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>

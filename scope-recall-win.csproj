@@ -15,8 +15,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <AssemblyName>ScopeRecallWin</AssemblyName>
-    <Version>1.1.0</Version>
-    <InformationalVersion>1.1.0</InformationalVersion>
+    <Version>1.2.0</Version>
+    <InformationalVersion>1.2.0</InformationalVersion>
     <!-- 自定义入口：禁用 XAML 生成的 Main，改由 Program.cs 显式初始化
          Windows App SDK Bootstrap（自动初始化在本机会 fail-fast，见 Program.cs 注释）。 -->
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>

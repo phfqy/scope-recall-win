@@ -28,14 +28,18 @@ public sealed partial class TimelineView : UserControl
         Loaded += TimelineView_Loaded;
     }
 
-    private async void TimelineView_Loaded(object sender, RoutedEventArgs e)
+    private void TimelineView_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_loaded)
+        UiThread.Run(DispatcherQueue, "TimelineView.TimelineView_Loaded", async () =>
         {
-            return;
-        }
-        _loaded = true;
-        await ReloadAsync();
+            if (_loaded)
+            {
+                return;
+            }
+            _loaded = true;
+            await ReloadAsync();
+
+        });
     }
 
     private string? ResolveDbPath()
@@ -105,9 +109,11 @@ public sealed partial class TimelineView : UserControl
         return flat.Length <= max ? flat : flat[..max] + "…";
     }
 
-    private async void BtnRefresh_Click(object sender, RoutedEventArgs e) => await ReloadAsync();
+    private void BtnRefresh_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "TimelineView.BtnRefresh_Click", ReloadAsync);
 
-    private async void BtnApply_Click(object sender, RoutedEventArgs e) => await ReloadAsync();
+    private void BtnApply_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "TimelineView.BtnApply_Click", ReloadAsync);
 
     private void EventList_ItemClick(object sender, ItemClickEventArgs e)
     {

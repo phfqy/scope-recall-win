@@ -4,53 +4,44 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <ScrollViewer>
-        <StackPanel Padding="26" Spacing="14" MaxWidth="860">
+        <StackPanel Padding="26" Spacing="14" MaxWidth="880">
 
             <TextBlock Text="安装" Style="{StaticResource PageTitleTextStyle}" />
-            <TextBlock Style="{StaticResource PageDescTextStyle}"
-                       Text="在本机一键部署记忆插件（hermes-scope-recall）。部署目录由你自主选择；控制台与 Agent 双方均可读写该目录。" />
+            <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                       Text="在本机部署记忆插件，三步完成：① 选目录 ② 确认 ③ 开始。目录由你自主选择，控制台与 Agent 都能读写该目录。" />
 
-            <!-- ============ 环境检测 ============ -->
+            <!-- ============ 当前状态 ============ -->
             <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Spacing="10">
-                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="当前环境" />
-                    <Grid ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="记忆库根目录"
-                                   Style="{StaticResource PageDescTextStyle}" />
-                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="TxtRoot"
-                                   Style="{StaticResource MonoTextStyle}" TextWrapping="Wrap" />
-                    </Grid>
-                    <Grid ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="已装版本" Style="{StaticResource PageDescTextStyle}" />
-                        <TextBlock Grid.Column="1" x:Name="TxtInstalled" Style="{StaticResource MonoTextStyle}" />
-                        <TextBlock Grid.Column="2" Text="外部 uv" Style="{StaticResource PageDescTextStyle}" />
-                        <TextBlock Grid.Column="3" x:Name="TxtUv" Style="{StaticResource MonoTextStyle}" />
-                    </Grid>
-                    <TextBlock x:Name="TxtEnvError" Style="{StaticResource PageDescTextStyle}"
-                               Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap"
-                               Visibility="Collapsed" />
-                    <Button x:Name="BtnRefreshEnv" Content="重新检测" Click="BtnRefreshEnv_Click" />
-                </StackPanel>
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" x:Name="EnvLed" Width="12" Height="12" CornerRadius="6"
+                            Background="#8A8A92" VerticalAlignment="Center" />
+
+                    <StackPanel Grid.Column="1" Spacing="2">
+                        <TextBlock x:Name="TxtEnvHeadline" Text="正在检查本机环境…" FontSize="13.5"
+                                   FontWeight="SemiBold" />
+                        <TextBlock x:Name="TxtEnvDetail" Style="{StaticResource PageDescTextStyle}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <Button Grid.Column="2" x:Name="BtnRefreshEnv" Content="重新检测"
+                            VerticalAlignment="Center" Click="BtnRefreshEnv_Click" />
+                </Grid>
             </Border>
 
-            <!-- ============ 部署目录 ============ -->
+            <!-- ============ 第 1 步：选择目录 ============ -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="部署目录" />
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="第 1 步 · 选择部署目录" />
                     <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
-                               Text="记忆库根目录（shared\\ 记忆数据 + shared-venv\\ 插件环境）将创建/复用于此。要求：控制台软件与 Agent 双方均可读写。" />
+                               Text="记忆数据与插件运行环境都会放在这个目录下。建议选一个空间充足的盘（如 E 盘），目录需允许控制台与 Agent 双方读写。" />
 
-                    <TextBox x:Name="TxtTargetRoot" PlaceholderText="选择或输入目录，例如 E:\ScopeRecall" />
+                    <TextBox x:Name="TxtTargetRoot" PlaceholderText="选择或直接输入目录，例如 E:\ScopeRecall" />
 
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="BtnBrowse" Content="浏览…" Click="BtnBrowse_Click" />
@@ -62,10 +53,46 @@
                 </StackPanel>
             </Border>
 
-            <!-- ============ 部署计划 ============ -->
+            <!-- ============ 第 2 步：确认并开始 ============ -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="部署计划" />
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="第 2 步 · 确认并开始" />
+
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="如果该目录已有记忆库，只会做校验与权限检查（不重装）；否则会新建插件运行环境与记忆库。" />
+
+                    <CheckBox x:Name="ChkConfirm"
+                              Content="我确认在本机部署记忆插件（新部署约占用 1.5 GB 磁盘，需要几分钟）" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="BtnDeploy" Content="开始部署"
+                                Style="{StaticResource AccentButtonStyle}" Click="BtnDeploy_Click" />
+                        <Button x:Name="BtnPlan" Content="查看部署计划" Click="BtnPlan_Click" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="TxtDeployState" TextWrapping="Wrap" FontSize="12.5"
+                               Foreground="{StaticResource MutedTextBrush}" />
+
+                    <ListView x:Name="DeployLogList" MaxHeight="220" Visibility="Collapsed">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontSize="12"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           TextWrapping="Wrap" />
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <TextBlock x:Name="TxtEnvError" Style="{StaticResource PageDescTextStyle}"
+                               Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap"
+                               Visibility="Collapsed" />
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 折叠：部署计划预览 ============ -->
+            <Expander Header="部署计划预览（技术细节）" HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch">
+                <StackPanel Spacing="8" Padding="0,8,0,0">
                     <ListView x:Name="PlanList" MaxHeight="200">
                         <ListView.ItemTemplate>
                             <DataTemplate>
@@ -78,31 +105,8 @@
                     <TextBlock x:Name="TxtPlanWarning" Style="{StaticResource PageDescTextStyle}"
                                Foreground="{StaticResource WarningBrush}" TextWrapping="Wrap"
                                Visibility="Collapsed" />
-                    <Button x:Name="BtnPlan" Content="生成部署计划" Click="BtnPlan_Click" />
                 </StackPanel>
-            </Border>
-
-            <!-- ============ 执行 ============ -->
-            <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Spacing="10">
-                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="执行部署" />
-                    <TextBox x:Name="TxtAuthorization" PlaceholderText="授权句（本人书写，≥6 字，必填。例：我确认在所选目录部署记忆插件）" />
-                    <CheckBox x:Name="ChkConfirm" Content="我已了解部署将在所选目录创建 venv 与记忆库（复用模式下仅校验）" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="BtnDeploy" Content="开始部署" Click="BtnDeploy_Click" />
-                    </StackPanel>
-                    <TextBlock x:Name="TxtDeployState" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
-                    <ListView x:Name="DeployLogList" MaxHeight="220">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" FontSize="12"
-                                           Foreground="{StaticResource MutedTextBrush}"
-                                           TextWrapping="Wrap" />
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-                </StackPanel>
-            </Border>
+            </Expander>
 
         </StackPanel>
     </ScrollViewer>

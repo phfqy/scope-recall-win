@@ -25,14 +25,18 @@ public sealed partial class AuditView : UserControl
         Loaded += AuditView_Loaded;
     }
 
-    private async void AuditView_Loaded(object sender, RoutedEventArgs e)
+    private void AuditView_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_loaded)
+        UiThread.Run(DispatcherQueue, "AuditView.AuditView_Loaded", async () =>
         {
-            return;
-        }
-        _loaded = true;
-        await ReloadAsync();
+            if (_loaded)
+            {
+                return;
+            }
+            _loaded = true;
+            await ReloadAsync();
+
+        });
     }
 
     private string? ResolveDbPath()
@@ -67,17 +71,22 @@ public sealed partial class AuditView : UserControl
             : $"共 {_rows.Count} 条删除操作（最近 200）。";
     }
 
-    private async void BtnRefresh_Click(object sender, RoutedEventArgs e) => await ReloadAsync();
+    private void BtnRefresh_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "AuditView.BtnRefresh_Click", ReloadAsync);
 
-    private async void BtnExport_Click(object sender, RoutedEventArgs e)
+    private void BtnExport_Click(object sender, RoutedEventArgs e)
     {
-        if (_rows.Count == 0)
+        UiThread.Run(DispatcherQueue, "AuditView.BtnExport_Click", async () =>
         {
-            return;
-        }
-        var headers = new[] { "operation_id", "mode", "ref_count", "project", "created_at", "epoch", "active_removed" };
-        var rows = _rows.Select(r => new[] { r.OperationId, r.Mode, r.RefCount.ToString(), r.ProjectId, r.CreatedAt, r.MemoryEpoch?.ToString(), r.ActiveContentRemoved }).ToList();
-        var md = "# 审计 — 删除操作台账\n\n" + Exporter.ToMarkdown(headers, rows);
-        await Exporter.SaveWithPickerAsync("audit-deletions.md", md, ".md", "Markdown");
+            if (_rows.Count == 0)
+            {
+                return;
+            }
+            var headers = new[] { "operation_id", "mode", "ref_count", "project", "created_at", "epoch", "active_removed" };
+            var rows = _rows.Select(r => new[] { r.OperationId, r.Mode, r.RefCount.ToString(), r.ProjectId, r.CreatedAt, r.MemoryEpoch?.ToString(), r.ActiveContentRemoved }).ToList();
+            var md = "# 审计 — 删除操作台账\n\n" + Exporter.ToMarkdown(headers, rows);
+            await Exporter.SaveWithPickerAsync("audit-deletions.md", md, ".md", "Markdown");
+
+        });
     }
 }

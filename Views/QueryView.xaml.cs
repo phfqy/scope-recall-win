@@ -73,7 +73,8 @@ public sealed partial class QueryView : UserControl
 
     // ---------- 词法检索 ----------
 
-    private async void BtnLexical_Click(object sender, RoutedEventArgs e) => await LexicalAsync();
+    private void BtnLexical_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "QueryView.BtnLexical_Click", LexicalAsync);
 
     private async Task LexicalAsync()
     {
@@ -99,7 +100,8 @@ public sealed partial class QueryView : UserControl
 
     // ---------- 链路追溯 ----------
 
-    private async void BtnTrace_Click(object sender, RoutedEventArgs e) => await TraceAsync();
+    private void BtnTrace_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "QueryView.BtnTrace_Click", TraceAsync);
 
     private async Task TraceAsync()
     {
@@ -139,7 +141,8 @@ public sealed partial class QueryView : UserControl
 
     // ---------- 实体匹配 ----------
 
-    private async void BtnEntity_Click(object sender, RoutedEventArgs e) => await EntityAsync();
+    private void BtnEntity_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "QueryView.BtnEntity_Click", EntityAsync);
 
     private async Task EntityAsync()
     {
@@ -157,11 +160,17 @@ public sealed partial class QueryView : UserControl
         var claims = (await _storage!.EntitySearchAsync(db, entity, 100)).ToList();
         EntityTable.BindRows(claims, new[]
         {
-            new TableColumn { Header = "claim_id", Width = 200, Value = r => ((ClaimRow)r).ClaimId },
-            new TableColumn { Header = "predicate", Width = 180, Value = r => ((ClaimRow)r).Predicate },
-            new TableColumn { Header = "kind", Width = 90, Value = r => ((ClaimRow)r).Kind },
-            new TableColumn { Header = "状态", Width = 90, Value = r => ((ClaimRow)r).State },
-            new TableColumn { Header = "rev", Width = 50, Value = r => ((ClaimRow)r).CurrentRevision.ToString() },
+            new TableColumn { Header = "记忆编号", Width = 200, Value = r => ((ClaimRow)r).ClaimId },
+            new TableColumn { Header = "属性", Width = 170, Value = r => ((ClaimRow)r).Predicate },
+            new TableColumn { Header = "类型", Width = 80, Value = r => ((ClaimRow)r).Kind },
+            new TableColumn
+            {
+                Header = "状态", Width = 90,
+                Value = r => StatusVisuals.StateLabel(((ClaimRow)r).State),
+                Color = r => StatusVisuals.BrushOf(((ClaimRow)r).State),
+                Tooltip = r => StatusVisuals.OriginalTerm(((ClaimRow)r).State),
+            },
+            new TableColumn { Header = "版本", Width = 50, Value = r => ((ClaimRow)r).CurrentRevision.ToString() },
         });
         TxtEntityResult.Text = $"「{entity}」匹配 {claims.Count} 条";
     }

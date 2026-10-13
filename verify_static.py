@@ -149,7 +149,7 @@ for f in (ico, iss, isl):
         fail(f"V6 缺安装器文件 {f.relative_to(ROOT)}")
 if iss.exists():
     iss_text = iss.read_text(encoding="utf-8")
-    for token in ("ScopeRecallWin-Setup-1.1.0", "PrivilegesRequired=lowest"):
+    for token in ("ScopeRecallWin-Setup-1.2.0", "PrivilegesRequired=lowest"):
         if token not in iss_text:
             fail(f"V6 setup.iss 缺少关键配置: {token}")
 ok.append("V6 安装器: app.ico / setup.iss / ChineseSimplified.isl 齐备")

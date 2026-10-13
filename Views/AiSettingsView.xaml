@@ -12,96 +12,114 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="AI 设置" Style="{StaticResource PageTitleTextStyle}" />
-                    <TextBlock Style="{StaticResource PageDescTextStyle}"
-                               Text="记忆所用大模型配置（runtime-config.json）。API Key 存入 Windows 凭据管理器，不落配置文件、不出现在日志。" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="选择服务商、填入 API Key 即可使用；更细的参数在下方「高级设置」中按需展开。" />
                 </StackPanel>
-                <Button Grid.Column="1" x:Name="BtnReload" Content="重新读取" Click="BtnReload_Click"
-                        VerticalAlignment="Center" />
+                <Button Grid.Column="1" x:Name="BtnReload" Content="重新读取"
+                        VerticalAlignment="Center" Click="BtnReload_Click" />
             </Grid>
 
             <TextBlock x:Name="TxtConfigPath" Style="{StaticResource MonoTextStyle}" TextWrapping="Wrap" />
 
-            <!-- 嵌入模型 -->
+            <!-- ============ 基本设置（三步完成） ============ -->
             <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Spacing="10">
-                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="嵌入模型（embedding，向量化记忆）" />
-                    <TextBox x:Name="TxtEmbeddingModel" Header="model" />
-                    <TextBox x:Name="TxtEmbeddingEndpoint" Header="endpoint" TextWrapping="Wrap" />
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox Grid.Column="0" x:Name="TxtEmbeddingDimensions" Header="dimensions" />
-                        <TextBox Grid.Column="1" x:Name="TxtEmbeddingCredentialEnv" Header="credential_env（环境变量名）" />
-                    </Grid>
-                    <ToggleSwitch x:Name="TglExternalEmbedding" Header="启用外部嵌入（external_embedding）" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="BtnTestEmbedding" Content="测试连接" Click="BtnTestEmbedding_Click" />
-                    </StackPanel>
-                    <TextBlock x:Name="TxtEmbeddingTest" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
-                </StackPanel>
-            </Border>
+                <StackPanel Spacing="12">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="基本设置（三步完成）" />
 
-            <!-- 整合模型 -->
-            <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Spacing="10">
-                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="整合模型（consolidation，提炼 claim）" />
-                    <TextBox x:Name="TxtConsolidationModel" Header="model" />
-                    <TextBox x:Name="TxtConsolidationEndpoint" Header="endpoint" TextWrapping="Wrap" />
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox Grid.Column="0" x:Name="TxtConsolidationKind" Header="kind（如 openai）" />
-                        <TextBox Grid.Column="1" x:Name="TxtMaxOutputTokens" Header="max_output_tokens" />
-                    </Grid>
-                    <ToggleSwitch x:Name="TglExternalConsolidation" Header="启用外部整合（external_consolidation）" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="BtnTestConsolidation" Content="测试连接" Click="BtnTestConsolidation_Click" />
-                    </StackPanel>
-                    <TextBlock x:Name="TxtConsolidationTest" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
-                </StackPanel>
-            </Border>
+                    <ComboBox x:Name="CmbProvider" Header="第 1 步 · 选择服务商"
+                              HorizontalAlignment="Stretch" SelectionChanged="CmbProvider_SelectionChanged">
+                        <ComboBoxItem Content="智谱 AI（推荐，本机当前使用）" Tag="zhipu" />
+                        <ComboBoxItem Content="OpenAI（或兼容接口）" Tag="openai" />
+                        <ComboBoxItem Content="自定义（手动填写接口地址）" Tag="custom" />
+                    </ComboBox>
 
-            <!-- 检索阈值 -->
-            <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Spacing="10">
-                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="向量检索阈值" />
-                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
-                               Text="vector_threshold：语义召回的最低相似度（0~1）。值越高召回越严格。" />
-                    <TextBox x:Name="TxtVectorThreshold" Header="vector_threshold" Width="160"
-                             HorizontalAlignment="Left" />
-                </StackPanel>
-            </Border>
+                    <TextBox x:Name="TxtSimpleModel" Header="第 2 步 · 模型名称"
+                             PlaceholderText="例如 embedding-3" />
 
-            <!-- API Key -->
-            <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Spacing="10">
-                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="API Key（Windows 凭据管理器）" />
+                    <TextBlock x:Name="TxtSimpleEndpointInfo" Style="{StaticResource PageDescTextStyle}"
+                               TextWrapping="Wrap" />
+
+                    <PasswordBox x:Name="PwdApiKey"
+                                 Header="第 3 步 · API Key（只保存在 Windows 凭据管理器，不写入配置文件）"
+                                 PlaceholderText="粘贴 API Key" />
+
                     <TextBlock x:Name="TxtKeyState" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
-                    <PasswordBox x:Name="PwdApiKey" PlaceholderText="粘贴 API Key（不回显、不落盘）" />
+
+                    <CheckBox x:Name="ChkSimpleConfirm"
+                              Content="我确认修改本机记忆库的模型配置（保存前会自动备份原配置）" />
+
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="BtnSaveKey" Content="保存到凭据管理器" Click="BtnSaveKey_Click" />
-                        <Button x:Name="BtnDeleteKey" Content="删除已存 Key" Click="BtnDeleteKey_Click" />
+                        <Button x:Name="BtnSimpleSave" Content="保存并测试连接"
+                                Style="{StaticResource AccentButtonStyle}" Click="BtnSimpleSave_Click" />
+                        <Button x:Name="BtnSimpleTest" Content="仅测试连接" Click="BtnSimpleTest_Click" />
                     </StackPanel>
+
+                    <TextBlock x:Name="TxtSimpleResult" TextWrapping="Wrap" FontSize="12.5"
+                               Foreground="{StaticResource MutedTextBrush}" />
                 </StackPanel>
             </Border>
 
-            <!-- 保存 -->
-            <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Spacing="10">
-                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="保存配置" />
+            <!-- ============ 高级设置（折叠） ============ -->
+            <Expander x:Name="AdvExpander" Header="高级设置（技术参数，通常无需修改）"
+                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                <StackPanel Spacing="12" Padding="0,8,0,0">
+
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="嵌入模型（把记忆转成向量的模型）" />
+                    <TextBox x:Name="TxtEmbeddingModel" Header="模型名称" />
+                    <TextBox x:Name="TxtEmbeddingEndpoint" Header="接口地址" TextWrapping="Wrap" />
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" x:Name="TxtEmbeddingDimensions" Header="向量维度" />
+                        <TextBox Grid.Column="1" x:Name="TxtEmbeddingCredentialEnv" Header="Key 存储名（环境变量名）" />
+                    </Grid>
+                    <ToggleSwitch x:Name="TglExternalEmbedding" Header="启用外部嵌入服务" />
+
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="整合模型（把记忆整理成条目的模型）" />
+                    <TextBox x:Name="TxtConsolidationModel" Header="模型名称" />
+                    <TextBox x:Name="TxtConsolidationEndpoint" Header="接口地址" TextWrapping="Wrap" />
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" x:Name="TxtConsolidationKind" Header="接口类型" />
+                        <TextBox Grid.Column="1" x:Name="TxtMaxOutputTokens" Header="单次最大输出长度" />
+                    </Grid>
+                    <ToggleSwitch x:Name="TglExternalConsolidation" Header="启用外部整合服务" />
+
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="检索灵敏度" />
                     <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
-                               Text="保存前自动备份原配置文件到 _upgrade-console\\runtime-config-*.json，采用保序更新（其他字段原样保留）。" />
-                    <TextBox x:Name="TxtAuthorization" Header="授权句（本人书写，≥6 字）"
+                               Text="相似度阈值（0~1）：数值越高，只有更贴近的记忆才会被召回。" />
+                    <TextBox x:Name="TxtVectorThreshold" Header="相似度阈值" Width="160"
+                             HorizontalAlignment="Left" />
+
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="保存高级配置" />
+                    <TextBox x:Name="TxtAuthorization" Header="确认语句（本人书写，≥6 字）"
                              PlaceholderText="例：我确认修改本机记忆库的模型配置" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="BtnSave" Content="保存配置"
+                        <Button x:Name="BtnSaveAdv" Content="保存高级配置"
                                 Style="{StaticResource DangerButtonStyle}" Click="BtnSave_Click" />
+                        <Button x:Name="BtnTestEmbedding" Content="测试嵌入接口"
+                                Click="BtnTestEmbedding_Click" />
+                        <Button x:Name="BtnTestConsolidation" Content="测试整合接口"
+                                Click="BtnTestConsolidation_Click" />
                     </StackPanel>
+                    <TextBlock x:Name="TxtEmbeddingTest" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+                    <TextBlock x:Name="TxtConsolidationTest" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
                     <TextBlock x:Name="TxtSaveState" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Expander>
+
+            <!-- ============ 凭据管理 ============ -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="凭据管理" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="API Key 保存在 Windows 凭据管理器（不回显、不写日志、不进配置文件）；删除后运行时将回退读取 shared 目录下的 .env 文件。" />
+                    <Button x:Name="BtnDeleteKey" Content="删除已保存的 Key" Click="BtnDeleteKey_Click" />
                 </StackPanel>
             </Border>
         </StackPanel>

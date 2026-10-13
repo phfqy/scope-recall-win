@@ -42,7 +42,8 @@ public sealed partial class SearchView : UserControl
         _dbPath = path is not null && File.Exists(path) ? path : null;
     }
 
-    private async void BtnSearch_Click(object sender, RoutedEventArgs e) => await SearchAsync();
+    private void BtnSearch_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "SearchView.BtnSearch_Click", SearchAsync);
 
     private void TxtKeyword_KeyDown(object sender, KeyRoutedEventArgs e)
     {

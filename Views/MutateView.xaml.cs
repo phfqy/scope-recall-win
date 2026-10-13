@@ -191,21 +191,25 @@ public sealed partial class MutateView : UserControl
                JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
     }
 
-    private async void BtnExecute_Click(object sender, RoutedEventArgs e)
+    private void BtnExecute_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new ContentDialog
+        UiThread.Run(DispatcherQueue, "MutateView.BtnExecute_Click", async () =>
         {
-            Title = "写入通道尚未接入",
-            Content = new TextBlock
+            var dialog = new ContentDialog
             {
-                TextWrapping = TextWrapping.Wrap,
-                Text = "本期已实现完整的请求构造与 schema 预校验（见上方信封预览）。\n" +
-                       "真实写入需要经 resident / MCP 通道调用 revise / forget 工具面（含 HMAC 握手与回读校验），" +
-                       "按约定在下一期接入；在此之前不会向记忆库发出任何写请求。",
-            },
-            CloseButtonText = "知道了",
-            XamlRoot = XamlRoot,
-        };
-        await dialog.ShowAsync();
+                Title = "写入通道尚未接入",
+                Content = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    Text = "本期已实现完整的请求构造与 schema 预校验（见上方信封预览）。\n" +
+                           "真实写入需要经 resident / MCP 通道调用 revise / forget 工具面（含 HMAC 握手与回读校验），" +
+                           "按约定在下一期接入；在此之前不会向记忆库发出任何写请求。",
+                },
+                CloseButtonText = "知道了",
+                XamlRoot = XamlRoot,
+            };
+            await dialog.ShowAsync();
+
+        });
     }
 }

@@ -28,14 +28,18 @@ public sealed partial class ProfileView : UserControl
         Loaded += ProfileView_Loaded;
     }
 
-    private async void ProfileView_Loaded(object sender, RoutedEventArgs e)
+    private void ProfileView_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_loaded)
+        UiThread.Run(DispatcherQueue, "ProfileView.ProfileView_Loaded", async () =>
         {
-            return;
-        }
-        _loaded = true;
-        await ReloadAsync();
+            if (_loaded)
+            {
+                return;
+            }
+            _loaded = true;
+            await ReloadAsync();
+
+        });
     }
 
     private string? ResolveDbPath()
@@ -72,56 +76,61 @@ public sealed partial class ProfileView : UserControl
         GroupList.ItemsSource = vms;
     }
 
-    private async void BtnRefresh_Click(object sender, RoutedEventArgs e) => await ReloadAsync();
+    private void BtnRefresh_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "ProfileView.BtnRefresh_Click", ReloadAsync);
 
-    private async void GroupList_ItemClick(object sender, ItemClickEventArgs e)
+    private void GroupList_ItemClick(object sender, ItemClickEventArgs e)
     {
-        var index = GroupList.Items.IndexOf(e.ClickedItem);
-        if (index < 0 || index >= _rows.Count || _dbPath is null || _storage is null)
+        UiThread.Run(DispatcherQueue, "ProfileView.GroupList_ItemClick", async () =>
         {
-            return;
-        }
-        var group = _rows[index];
-
-        // 抽屉内展示该 subject 下的 claim 列表（复用实体检索）
-        var claims = (await _storage.EntitySearchAsync(_dbPath, group.Subject, 100)).ToList();
-
-        var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(new TextBlock
-        {
-            Text = $"{group.Subject} · {group.ClaimCount} 条（active {group.ActiveCount}）",
-            Style = Application.Current.Resources["SectionHeaderTextStyle"] as Style,
-        });
-        foreach (var c in claims)
-        {
-            var box = new Border
+            var index = GroupList.Items.IndexOf(e.ClickedItem);
+            if (index < 0 || index >= _rows.Count || _dbPath is null || _storage is null)
             {
-                Background = (Brush)Application.Current.Resources["Surface2Brush"],
-                CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(10),
-            };
-            box.Child = new StackPanel
+                return;
+            }
+            var group = _rows[index];
+
+            // 抽屉内展示该 subject 下的 claim 列表（复用实体检索）
+            var claims = (await _storage.EntitySearchAsync(_dbPath, group.Subject, 100)).ToList();
+
+            var panel = new StackPanel { Spacing = 8 };
+            panel.Children.Add(new TextBlock
             {
-                Spacing = 2,
-                Children =
+                Text = $"{group.Subject} · {group.ClaimCount} 条（active {group.ActiveCount}）",
+                Style = Application.Current.Resources["SectionHeaderTextStyle"] as Style,
+            });
+            foreach (var c in claims)
+            {
+                var box = new Border
                 {
-                    new TextBlock
+                    Background = (Brush)Application.Current.Resources["Surface2Brush"],
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(10),
+                };
+                box.Child = new StackPanel
+                {
+                    Spacing = 2,
+                    Children =
                     {
-                        Text = $"{c.Predicate} · {c.State}",
-                        FontSize = 12.5,
-                        FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                        new TextBlock
+                        {
+                            Text = $"{c.Predicate} · {c.State}",
+                            FontSize = 12.5,
+                            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                        },
+                        new TextBlock
+                        {
+                            Text = $"{c.ClaimId} · kind {c.Kind} · rev {c.CurrentRevision}",
+                            FontSize = 11,
+                            Foreground = (Brush)Application.Current.Resources["MutedTextBrush"],
+                        },
                     },
-                    new TextBlock
-                    {
-                        Text = $"{c.ClaimId} · kind {c.Kind} · rev {c.CurrentRevision}",
-                        FontSize = 11,
-                        Foreground = (Brush)Application.Current.Resources["MutedTextBrush"],
-                    },
-                },
-            };
-            panel.Children.Add(box);
-        }
+                };
+                panel.Children.Add(box);
+            }
 
-        Drawer.Open($"主题 {group.Subject}", panel);
+            Drawer.Open($"主题 {group.Subject}", panel);
+
+        });
     }
 }

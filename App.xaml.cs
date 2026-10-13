@@ -15,6 +15,9 @@ public partial class App : Application
     /// <summary>主窗口实例（FolderPicker 等需要窗口句柄的场景使用）。</summary>
     public static MainWindow? MainWindow { get; private set; }
 
+    /// <summary>崩溃日志（始终写入 %LOCALAPPDATA%\ScopeRecallWin\crash.log，便于用户回报与自查）。</summary>
+    public static string CrashLogPath => System.IO.Path.Combine(AppSettings.SettingsDir, "crash.log");
+
     /// <summary>启动跟踪日志（诊断 unpackaged fail-fast 用，写入 exe 同目录 startup_trace.log）。
     /// 仅在环境变量 SR_TRACE=1 时启用，避免正常运行期产生垃圾文件。</summary>
     internal static string TracePath => System.IO.Path.Combine(AppContext.BaseDirectory, "startup_trace.log");
@@ -40,6 +43,23 @@ public partial class App : Application
         }
     }
 
+    /// <summary>记录未处理异常（始终落盘 crash.log），供问题排查；自身不再抛异常。</summary>
+    public static void LogCrash(string source, Exception? ex)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(AppSettings.SettingsDir);
+            System.IO.File.AppendAllText(
+                CrashLogPath,
+                $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}] {source}\n{ex}\n---\n");
+        }
+        catch
+        {
+            // 日志写入失败时静默（避免二次崩溃）
+        }
+        Trace($"{source}: {ex?.GetType().Name}: {ex?.Message}");
+    }
+
     public App()
     {
         if (TraceEnabled)
@@ -57,22 +77,32 @@ public partial class App : Application
         InitializeComponent();
         Trace("App ctor: InitializeComponent done");
 
-        // 未处理异常也记进追踪日志（fail-fast 之外的可捕获异常）
+        // 三层未处理异常兜底：XAML/UI 线程、后台线程、未观察的 Task。
+        // 一律记录到 crash.log 并吞掉，避免整个应用退出（用户可见的"闪退"）。
         UnhandledException += (_, e) =>
         {
-            Trace("UNHANDLED: " + e.Exception);
+            LogCrash("UI 未处理异常", e.Exception);
             e.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            LogCrash("AppDomain 未处理异常", e.ExceptionObject as Exception);
+        };
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            LogCrash("未观察的 Task 异常", e.Exception);
+            e.SetObserved();
         };
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         Trace("OnLaunched: begin");
-        RegisterServices();
-        Trace("OnLaunched: services registered");
-
         try
         {
+            RegisterServices();
+            Trace("OnLaunched: services registered");
+
             _window = new MainWindow();
             MainWindow = _window as MainWindow;
             Trace("OnLaunched: MainWindow constructed");
@@ -81,7 +111,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            Trace("OnLaunched EXCEPTION: " + ex);
+            LogCrash("OnLaunched", ex);
             throw;
         }
     }

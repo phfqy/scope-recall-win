@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using ScopeRecallWin.Helpers;
 using ScopeRecallWin.Infrastructure;
 using ScopeRecallWin.Services;
 
@@ -9,28 +10,37 @@ namespace ScopeRecallWin.Views;
 
 public sealed partial class AiSettingsView : UserControl
 {
+    /// <summary>服务商预设：一次选择即填好接口地址与技术参数。</summary>
+    private sealed record ProviderPreset(
+        string EmbeddingEndpoint, string EmbeddingModel, int Dimensions, string CredentialEnv,
+        string ConsolidationEndpoint, string ConsolidationModel, int MaxOutputTokens);
+
+    private static readonly ProviderPreset Zhipu = new(
+        "https://open.bigmodel.cn/api/paas/v4/embeddings", "embedding-3", 2048, "ZHIPU_API_KEY",
+        "https://open.bigmodel.cn/api/paas/v4/chat/completions", "glm-4-flash-250414", 8192);
+
+    private static readonly ProviderPreset OpenAi = new(
+        "https://api.openai.com/v1/embeddings", "text-embedding-3-small", 1536, "OPENAI_API_KEY",
+        "https://api.openai.com/v1/chat/completions", "gpt-4o-mini", 4096);
+
+    /// <summary>简单模式的确认语句（勾选复选框即代表本人确认，等价于手写授权句）。</summary>
+    private const string SimpleConfirmSentence = "我确认修改本机记忆库的模型配置";
+
     private readonly IModelConfigService? _models;
     private ModelConfig? _current;
-    private bool _loaded;
+    private bool _loading;
 
     public AiSettingsView()
     {
         InitializeComponent();
         _models = ServiceLocator.Get<IModelConfigService>();
-        Loaded += AiSettingsView_Loaded;
+        Loaded += (_, _) => UiThread.Run(DispatcherQueue, "AiSettingsView.Loaded", LoadAsync);
     }
 
-    private async void AiSettingsView_Loaded(object sender, RoutedEventArgs e)
-    {
-        if (_loaded)
-        {
-            return;
-        }
-        _loaded = true;
-        await LoadAsync();
-    }
+    private void BtnReload_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "AiSettingsView.Reload", LoadAsync);
 
-    private async void BtnReload_Click(object sender, RoutedEventArgs e) => await LoadAsync();
+    // ---------- 读取 ----------
 
     private async Task LoadAsync()
     {
@@ -39,14 +49,19 @@ public sealed partial class AiSettingsView : UserControl
             TxtConfigPath.Text = "模型配置服务不可用。";
             return;
         }
+
+        _loading = true;
         _current = await _models.LoadAsync();
         if (_current is null)
         {
-            TxtConfigPath.Text = "未找到 runtime-config.json：请先在「安装」页选择部署目录。";
+            TxtConfigPath.Text = "未找到配置文件（runtime-config.json）：请先在「安装」页完成部署。";
+            _loading = false;
             return;
         }
 
-        TxtConfigPath.Text = _current.ConfigPath;
+        TxtConfigPath.Text = "配置文件：" + _current.ConfigPath;
+
+        // 高级模式：全字段
         TxtEmbeddingModel.Text = _current.EmbeddingModel;
         TxtEmbeddingEndpoint.Text = _current.EmbeddingEndpoint;
         TxtEmbeddingDimensions.Text = _current.EmbeddingDimensions.ToString();
@@ -61,7 +76,48 @@ public sealed partial class AiSettingsView : UserControl
 
         TxtVectorThreshold.Text = _current.VectorThreshold.ToString("0.##");
 
+        // 简单模式：服务商推断 + 模型名
+        var provider = InferProvider(_current.EmbeddingEndpoint);
+        foreach (var item in CmbProvider.Items)
+        {
+            if (item is ComboBoxItem { Tag: string tag } && tag == provider)
+            {
+                CmbProvider.SelectedItem = item;
+                break;
+            }
+        }
+        TxtSimpleModel.Text = _current.EmbeddingModel;
+        UpdateEndpointInfo(provider);
+
         await RefreshKeyStateAsync();
+        _loading = false;
+    }
+
+    private static string InferProvider(string? endpoint)
+    {
+        if (endpoint is null)
+        {
+            return "custom";
+        }
+        if (endpoint.Contains("bigmodel.cn", StringComparison.OrdinalIgnoreCase))
+        {
+            return "zhipu";
+        }
+        if (endpoint.Contains("openai.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return "openai";
+        }
+        return "custom";
+    }
+
+    private void UpdateEndpointInfo(string provider)
+    {
+        TxtSimpleEndpointInfo.Text = provider switch
+        {
+            "zhipu" => "接口地址已自动填写：https://open.bigmodel.cn/api/paas/v4/（智谱 AI）",
+            "openai" => "接口地址已自动填写：https://api.openai.com/v1/（OpenAI）",
+            _ => "自定义模式：接口地址请在下方「高级设置」中填写。",
+        };
     }
 
     private async Task RefreshKeyStateAsync()
@@ -73,17 +129,208 @@ public sealed partial class AiSettingsView : UserControl
         var env = (TxtEmbeddingCredentialEnv.Text ?? "").Trim();
         var has = env.Length > 0 && await _models.HasStoredKeyAsync(env);
         TxtKeyState.Text = has
-            ? $"凭据管理器已存有「{env}」的 Key（值不回显，仅显示状态）。"
-            : $"凭据管理器中没有「{env}」的 Key。运行时将回退读取 shared\\.env。";
+            ? $"已保存 Key（存储名：{env}，值不回显）。重新填写即可覆盖。"
+            : $"尚未保存 Key（存储名：{env}）。填好后点上方按钮即可保存。";
     }
 
-    private async void BtnTestEmbedding_Click(object sender, RoutedEventArgs e)
-        => await TestAsync(TxtEmbeddingEndpoint.Text, TxtEmbeddingCredentialEnv.Text, TxtEmbeddingTest);
+    // ---------- 简单模式 ----------
 
-    private async void BtnTestConsolidation_Click(object sender, RoutedEventArgs e)
+    private void CmbProvider_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        var env = (TxtEmbeddingCredentialEnv.Text ?? "").Trim();
-        await TestAsync(TxtConsolidationEndpoint.Text, env, TxtConsolidationTest);
+        if (_loading || CmbProvider.SelectedItem is not ComboBoxItem { Tag: string tag })
+        {
+            return;
+        }
+
+        var preset = tag switch { "zhipu" => Zhipu, "openai" => OpenAi, _ => null };
+        if (preset is not null)
+        {
+            TxtSimpleModel.Text = preset.EmbeddingModel;
+            // 同步到高级字段（保存时以高级字段为准）
+            TxtEmbeddingEndpoint.Text = preset.EmbeddingEndpoint;
+            TxtEmbeddingDimensions.Text = preset.Dimensions.ToString();
+            TxtEmbeddingCredentialEnv.Text = preset.CredentialEnv;
+            TxtConsolidationEndpoint.Text = preset.ConsolidationEndpoint;
+            TxtConsolidationModel.Text = preset.ConsolidationModel;
+            TxtConsolidationKind.Text = "openai";
+            TxtMaxOutputTokens.Text = preset.MaxOutputTokens.ToString();
+            UiThread.Run(DispatcherQueue, "AiSettingsView.RefreshKeyState", RefreshKeyStateAsync);
+        }
+        UpdateEndpointInfo(tag);
+    }
+
+    private void BtnSimpleTest_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "AiSettingsView.SimpleTest", async () =>
+        {
+            if (_models is null)
+            {
+                return;
+            }
+            TxtSimpleResult.Text = "正在测试连接…";
+            TxtSimpleResult.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["MutedTextBrush"];
+
+            var endpoint = (TxtEmbeddingEndpoint.Text ?? "").Trim();
+            var env = (TxtEmbeddingCredentialEnv.Text ?? "").Trim();
+            var result = await _models.TestConnectionAsync(endpoint, env);
+
+            var label = result.Ok ? "✓ 连接正常" : "✗ 连接失败";
+            TxtSimpleResult.Text = $"{label}：{result.Detail}（耗时 {result.LatencyMs} 毫秒）" +
+                                   (result.NeedsKey ? "。提示：还没有保存 API Key" : "");
+            TxtSimpleResult.Foreground = StatusVisuals.BrushOf(result.Ok ? "ok" : "failed");
+        });
+
+    private void BtnSimpleSave_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "AiSettingsView.SimpleSave", async () =>
+        {
+            if (_models is null || _current is null)
+            {
+                TxtSimpleResult.Text = "未读取到现有配置，无法保存。";
+                return;
+            }
+            if (ChkSimpleConfirm.IsChecked != true)
+            {
+                TxtSimpleResult.Text = "请先勾选确认框：需要你本人确认本次修改。";
+                TxtSimpleResult.Foreground = StatusVisuals.BrushOf("pending");
+                return;
+            }
+
+            // 1) 若有填 Key，先存入凭据管理器
+            var env = (TxtEmbeddingCredentialEnv.Text ?? "").Trim();
+            var key = PwdApiKey.Password ?? "";
+            if (env.Length > 0 && key.Trim().Length >= 8)
+            {
+                var stored = await _models.StoreKeyAsync(env, key.Trim());
+                PwdApiKey.Password = "";
+                if (!stored)
+                {
+                    TxtSimpleResult.Text = "API Key 保存失败（凭据管理器不可写），配置未修改。";
+                    TxtSimpleResult.Foreground = StatusVisuals.BrushOf("failed");
+                    return;
+                }
+            }
+
+            // 2) 保存配置（以高级字段为准，简单模式的模型名同步进去）
+            if (!int.TryParse((TxtEmbeddingDimensions.Text ?? "").Trim(), out var dims) || dims < 1)
+            {
+                TxtSimpleResult.Text = "向量维度不是有效数字，请检查「高级设置」。";
+                TxtSimpleResult.Foreground = StatusVisuals.BrushOf("failed");
+                return;
+            }
+
+            var updated = _current with
+            {
+                EmbeddingModel = (TxtSimpleModel.Text ?? "").Trim(),
+                EmbeddingEndpoint = (TxtEmbeddingEndpoint.Text ?? "").Trim(),
+                EmbeddingCredentialEnv = env,
+                EmbeddingDimensions = dims,
+                ConsolidationModel = (TxtConsolidationModel.Text ?? "").Trim(),
+                ConsolidationEndpoint = (TxtConsolidationEndpoint.Text ?? "").Trim(),
+                ConsolidationKind = string.IsNullOrWhiteSpace(TxtConsolidationKind.Text)
+                    ? "openai" : TxtConsolidationKind.Text.Trim(),
+                MaxOutputTokens = int.TryParse((TxtMaxOutputTokens.Text ?? "").Trim(), out var mt) ? mt : _current.MaxOutputTokens,
+            };
+
+            var save = await _models.SaveAsync(updated, SimpleConfirmSentence);
+            if (!save.Ok)
+            {
+                TxtSimpleResult.Text = $"保存失败：{save.Error}（原配置未被修改）";
+                TxtSimpleResult.Foreground = StatusVisuals.BrushOf("failed");
+                return;
+            }
+
+            // 3) 保存后自动测试连接
+            var test = await _models.TestConnectionAsync(updated.EmbeddingEndpoint, updated.EmbeddingCredentialEnv);
+            TxtSimpleResult.Text = test.Ok
+                ? $"✓ 已保存并连接正常（耗时 {test.LatencyMs} 毫秒）。原配置备份：{save.BackupPath}"
+                : $"✓ 配置已保存。但连接测试未通过：{test.Detail}（耗时 {test.LatencyMs} 毫秒）";
+            TxtSimpleResult.Foreground = StatusVisuals.BrushOf(test.Ok ? "ok" : "pending");
+            await LoadAsync();
+        });
+
+    // ---------- 高级模式 ----------
+
+    private void BtnSave_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "AiSettingsView.SaveAdv", async () =>
+        {
+            if (_models is null || _current is null)
+            {
+                return;
+            }
+            if (!int.TryParse((TxtEmbeddingDimensions.Text ?? "").Trim(), out var dims) || dims < 1)
+            {
+                TxtSaveState.Text = "向量维度必须是正整数。";
+                TxtSaveState.Foreground = StatusVisuals.BrushOf("failed");
+                return;
+            }
+            if (!double.TryParse((TxtVectorThreshold.Text ?? "").Trim(), out var threshold)
+                || threshold < 0 || threshold > 1)
+            {
+                TxtSaveState.Text = "相似度阈值必须是 0~1 之间的数。";
+                TxtSaveState.Foreground = StatusVisuals.BrushOf("failed");
+                return;
+            }
+            int? maxTokens = null;
+            var rawTokens = (TxtMaxOutputTokens.Text ?? "").Trim();
+            if (rawTokens.Length > 0)
+            {
+                if (!int.TryParse(rawTokens, out var parsed))
+                {
+                    TxtSaveState.Text = "单次最大输出长度必须是整数。";
+                    TxtSaveState.Foreground = StatusVisuals.BrushOf("failed");
+                    return;
+                }
+                maxTokens = parsed;
+            }
+
+            var auth = (TxtAuthorization.Text ?? "").Trim();
+            if (auth.Length < 6)
+            {
+                TxtSaveState.Text = "确认语句不足 6 字：请用一句话确认你本人了解本次修改。";
+                TxtSaveState.Foreground = StatusVisuals.BrushOf("failed");
+                return;
+            }
+
+            var updated = _current with
+            {
+                EmbeddingModel = (TxtEmbeddingModel.Text ?? "").Trim(),
+                EmbeddingEndpoint = (TxtEmbeddingEndpoint.Text ?? "").Trim(),
+                EmbeddingCredentialEnv = (TxtEmbeddingCredentialEnv.Text ?? "").Trim(),
+                EmbeddingDimensions = dims,
+                ConsolidationModel = (TxtConsolidationModel.Text ?? "").Trim(),
+                ConsolidationEndpoint = (TxtConsolidationEndpoint.Text ?? "").Trim(),
+                ConsolidationKind = (TxtConsolidationKind.Text ?? "").Trim(),
+                MaxOutputTokens = maxTokens,
+                ExternalEmbedding = TglExternalEmbedding.IsOn,
+                ExternalConsolidation = TglExternalConsolidation.IsOn,
+                VectorThreshold = threshold,
+            };
+
+            TxtSaveState.Text = "正在保存（含自动备份）…";
+            var result = await _models.SaveAsync(updated, auth);
+            if (result.Ok)
+            {
+                TxtSaveState.Text = $"✓ 已保存。原配置备份：{result.BackupPath ?? "（未生成）"}";
+                TxtSaveState.Foreground = StatusVisuals.BrushOf("ok");
+                await LoadAsync();
+            }
+            else
+            {
+                TxtSaveState.Text = $"✗ 保存失败：{result.Error}（配置未被修改）";
+                TxtSaveState.Foreground = StatusVisuals.BrushOf("failed");
+            }
+        });
+
+    private void BtnTestEmbedding_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "AiSettingsView.TestEmbedding",
+            () => TestAsync(TxtEmbeddingEndpoint.Text, TxtEmbeddingCredentialEnv.Text, TxtEmbeddingTest));
+
+    private void BtnTestConsolidation_Click(object sender, RoutedEventArgs e)
+    {
+        UiThread.Run(DispatcherQueue, "AiSettingsView.TestConsolidation", async () =>
+        {
+            var env = (TxtEmbeddingCredentialEnv.Text ?? "").Trim();
+            await TestAsync(TxtConsolidationEndpoint.Text, env, TxtConsolidationTest);
+        });
     }
 
     private async Task TestAsync(string? endpoint, string? credentialEnv, TextBlock target)
@@ -93,131 +340,51 @@ public sealed partial class AiSettingsView : UserControl
             return;
         }
         target.Text = "正在测试连接…";
+        target.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["MutedTextBrush"];
+
         var result = await _models.TestConnectionAsync(endpoint ?? "", (credentialEnv ?? "").Trim());
-        var icon = result.Ok ? "✓" : "✗";
-        target.Text = $"{icon} {result.Detail}（{result.LatencyMs}ms）" +
-                      (result.NeedsKey ? " · 建议先在下方保存 API Key" : "");
+        target.Text = (result.Ok ? "✓ 连接正常" : "✗ 连接失败") +
+                      $"：{result.Detail}（耗时 {result.LatencyMs} 毫秒）" +
+                      (result.NeedsKey ? "。提示：还没有保存 API Key" : "");
+        target.Foreground = StatusVisuals.BrushOf(result.Ok ? "ok" : "failed");
     }
 
-    private async void BtnSaveKey_Click(object sender, RoutedEventArgs e)
-    {
-        if (_models is null)
-        {
-            return;
-        }
-        var env = (TxtEmbeddingCredentialEnv.Text ?? "").Trim();
-        var secret = PwdApiKey.Password ?? "";
-        if (env.Length == 0)
-        {
-            TxtKeyState.Text = "请先填写 credential_env（环境变量名）。";
-            return;
-        }
-        if (secret.Trim().Length < 8)
-        {
-            TxtKeyState.Text = "Key 过短，未保存。";
-            return;
-        }
-        var ok = await _models.StoreKeyAsync(env, secret.Trim());
-        PwdApiKey.Password = "";
-        TxtKeyState.Text = ok
-            ? $"已保存到 Windows 凭据管理器（{env}）。值不回显、不落配置文件。"
-            : "保存失败：凭据管理器不可写。";
-    }
+    // ---------- 凭据管理 ----------
 
-    private async void BtnDeleteKey_Click(object sender, RoutedEventArgs e)
-    {
-        if (_models is null)
+    private void BtnDeleteKey_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "AiSettingsView.DeleteKey", async () =>
         {
-            return;
-        }
-        var env = (TxtEmbeddingCredentialEnv.Text ?? "").Trim();
-        if (env.Length == 0)
-        {
-            return;
-        }
-        var dialog = new ContentDialog
-        {
-            Title = "删除已存 Key",
-            Content = new TextBlock
+            if (_models is null)
             {
-                TextWrapping = TextWrapping.Wrap,
-                Text = $"将从 Windows 凭据管理器删除「{env}」的 Key。删除后运行时将回退读取 shared\\.env。",
-            },
-            PrimaryButtonText = "确认删除",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
-        };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-        {
-            return;
-        }
-        var ok = await _models.DeleteKeyAsync(env);
-        TxtKeyState.Text = ok ? $"已删除「{env}」的 Key。" : "删除失败（可能本来就不存在）。";
-    }
-
-    private async void BtnSave_Click(object sender, RoutedEventArgs e)
-    {
-        if (_models is null || _current is null)
-        {
-            return;
-        }
-
-        if (!int.TryParse((TxtEmbeddingDimensions.Text ?? "").Trim(), out var dims) || dims < 1)
-        {
-            TxtSaveState.Text = "dimensions 必须是正整数。";
-            return;
-        }
-        if (!double.TryParse((TxtVectorThreshold.Text ?? "").Trim(), out var threshold)
-            || threshold < 0 || threshold > 1)
-        {
-            TxtSaveState.Text = "vector_threshold 必须是 0~1 之间的数。";
-            return;
-        }
-        int? maxTokens = null;
-        var rawTokens = (TxtMaxOutputTokens.Text ?? "").Trim();
-        if (rawTokens.Length > 0)
-        {
-            if (!int.TryParse(rawTokens, out var parsed))
-            {
-                TxtSaveState.Text = "max_output_tokens 必须是整数。";
                 return;
             }
-            maxTokens = parsed;
-        }
+            var env = (TxtEmbeddingCredentialEnv.Text ?? "").Trim();
+            if (env.Length == 0)
+            {
+                return;
+            }
 
-        var auth = (TxtAuthorization.Text ?? "").Trim();
-        if (auth.Length < 6)
-        {
-            TxtSaveState.Text = "授权句不足 6 字：请用一句话确认你本人了解本次配置修改。";
-            return;
-        }
+            var dialog = new ContentDialog
+            {
+                Title = "删除已保存的 Key",
+                Content = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    Text = $"将从 Windows 凭据管理器删除「{env}」的 Key。\n" +
+                           "删除后运行时将回退读取 shared 目录下的 .env 文件。",
+                },
+                PrimaryButtonText = "确认删除",
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = XamlRoot,
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                return;
+            }
 
-        var updated = _current with
-        {
-            EmbeddingModel = (TxtEmbeddingModel.Text ?? "").Trim(),
-            EmbeddingEndpoint = (TxtEmbeddingEndpoint.Text ?? "").Trim(),
-            EmbeddingCredentialEnv = (TxtEmbeddingCredentialEnv.Text ?? "").Trim(),
-            EmbeddingDimensions = dims,
-            ConsolidationModel = (TxtConsolidationModel.Text ?? "").Trim(),
-            ConsolidationEndpoint = (TxtConsolidationEndpoint.Text ?? "").Trim(),
-            ConsolidationKind = (TxtConsolidationKind.Text ?? "").Trim(),
-            MaxOutputTokens = maxTokens,
-            ExternalEmbedding = TglExternalEmbedding.IsOn,
-            ExternalConsolidation = TglExternalConsolidation.IsOn,
-            VectorThreshold = threshold,
-        };
-
-        TxtSaveState.Text = "正在保存（含备份）…";
-        var result = await _models.SaveAsync(updated, auth);
-        if (result.Ok)
-        {
-            TxtSaveState.Text = $"已保存。原配置备份：{result.BackupPath ?? "（未生成）"}";
-            await LoadAsync();
-        }
-        else
-        {
-            TxtSaveState.Text = $"保存失败：{result.Error}（配置未被修改）";
-        }
-    }
+            var ok = await _models.DeleteKeyAsync(env);
+            TxtKeyState.Text = ok ? $"已删除「{env}」的 Key。" : "删除失败（可能本来就没有保存）。";
+            TxtKeyState.Foreground = StatusVisuals.BrushOf(ok ? "ok" : "failed");
+        });
 }

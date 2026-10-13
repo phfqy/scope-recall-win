@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using ScopeRecallWin.Helpers;
 using ScopeRecallWin.Infrastructure;
 using ScopeRecallWin.Models;
 using ScopeRecallWin.Services;
@@ -25,17 +26,22 @@ public sealed partial class AiInfoView : UserControl
         Loaded += AiInfoView_Loaded;
     }
 
-    private async void AiInfoView_Loaded(object sender, RoutedEventArgs e)
+    private void AiInfoView_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_loaded)
+        UiThread.Run(DispatcherQueue, "AiInfoView.AiInfoView_Loaded", async () =>
         {
-            return;
-        }
-        _loaded = true;
-        await ReloadAsync();
+            if (_loaded)
+            {
+                return;
+            }
+            _loaded = true;
+            await ReloadAsync();
+
+        });
     }
 
-    private async void BtnRefresh_Click(object sender, RoutedEventArgs e) => await ReloadAsync();
+    private void BtnRefresh_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "AiInfoView.BtnRefresh_Click", ReloadAsync);
 
     private async Task ReloadAsync()
     {
@@ -64,6 +70,8 @@ public sealed partial class AiInfoView : UserControl
                 "warn" => "● 部分可用",
                 _ => "● 未连接",
             },
+
+            HealthBrush = StatusVisuals.BrushOf(s.Health),
             Detail = $"{s.HealthDetail}\n" +
                      $"配置：{s.ConfigDetail}\n" +
                      $"resident：{(s.ResidentAlive ? $"运行中 pid {s.Pid} · 端口 {s.Port} · v{s.ResidentVersion}" : "未运行")}\n" +

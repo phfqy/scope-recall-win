@@ -29,14 +29,18 @@ public sealed partial class AiChangesView : UserControl
         Loaded += AiChangesView_Loaded;
     }
 
-    private async void AiChangesView_Loaded(object sender, RoutedEventArgs e)
+    private void AiChangesView_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_loaded)
+        UiThread.Run(DispatcherQueue, "AiChangesView.AiChangesView_Loaded", async () =>
         {
-            return;
-        }
-        _loaded = true;
-        await ReloadAsync();
+            if (_loaded)
+            {
+                return;
+            }
+            _loaded = true;
+            await ReloadAsync();
+
+        });
     }
 
     private string? ResolveDbPath()
@@ -74,107 +78,123 @@ public sealed partial class AiChangesView : UserControl
 
     private static IReadOnlyList<TableColumn> Columns() => new[]
     {
-        new TableColumn { Header = "candidate_ref", Width = 230, Value = r => ((CandidateRow)r).CandidateRef },
-        new TableColumn { Header = "rev", Width = 50, Value = r => ((CandidateRow)r).CandidateRevision.ToString() },
-        new TableColumn { Header = "状态", Width = 150, Value = r => ((CandidateRow)r).ProcessingState },
-        new TableColumn { Header = "证据", Width = 55, Value = r => ((CandidateRow)r).EvidenceCount.ToString() },
+        new TableColumn { Header = "候选编号", Width = 230, Value = r => ((CandidateRow)r).CandidateRef },
+        new TableColumn { Header = "版本", Width = 50, Value = r => ((CandidateRow)r).CandidateRevision.ToString() },
+        new TableColumn
+        {
+            Header = "处理状态", Width = 130,
+            Value = r => StatusVisuals.StateLabel(((CandidateRow)r).ProcessingState),
+            Color = r => StatusVisuals.BrushOf(((CandidateRow)r).ProcessingState),
+            Tooltip = r => StatusVisuals.OriginalTerm(((CandidateRow)r).ProcessingState),
+        },
+        new TableColumn { Header = "关联证据数", Width = 85, Value = r => ((CandidateRow)r).EvidenceCount.ToString() },
         new TableColumn { Header = "原因", Width = 170, Value = r => ((CandidateRow)r).Reason ?? "" },
         new TableColumn { Header = "更新时间", Width = 150, Value = r => ((CandidateRow)r).UpdatedAt ?? "" },
     };
 
-    private async void BtnRefresh_Click(object sender, RoutedEventArgs e) => await ReloadAsync();
+    private void BtnRefresh_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "AiChangesView.BtnRefresh_Click", ReloadAsync);
 
-    private async void BtnApply_Click(object sender, RoutedEventArgs e) => await ReloadAsync();
+    private void BtnApply_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "AiChangesView.BtnApply_Click", ReloadAsync);
 
-    private async void Table_RowTapped(object? sender, object row)
+    private void Table_RowTapped(object? sender, object row)
     {
-        if (row is not CandidateRow candidate || _dbPath is null || _storage is null)
+        UiThread.Run(DispatcherQueue, "AiChangesView.Table_RowTapped", async () =>
         {
-            return;
-        }
-        var evidence = await _storage.GetCandidateEvidenceAsync(_dbPath, candidate.CandidateRef);
-
-        var panel = new StackPanel { Spacing = 10 };
-        void Field(string label, string value)
-        {
-            var grid = new Grid { ColumnSpacing = 8 };
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            var k = new TextBlock
+            if (row is not CandidateRow candidate || _dbPath is null || _storage is null)
             {
-                Text = label,
-                FontSize = 12,
-                Foreground = (Brush)Application.Current.Resources["MutedTextBrush"],
-            };
-            var v = new TextBlock
-            {
-                Text = value,
-                FontSize = 12.5,
-                TextWrapping = TextWrapping.Wrap,
-                IsTextSelectionEnabled = true,
-            };
-            Grid.SetColumn(k, 0);
-            Grid.SetColumn(v, 1);
-            grid.Children.Add(k);
-            grid.Children.Add(v);
-            panel.Children.Add(grid);
-        }
+                return;
+            }
+            var evidence = await _storage.GetCandidateEvidenceAsync(_dbPath, candidate.CandidateRef);
 
-        Field("candidate", candidate.CandidateRef);
-        Field("revision", candidate.CandidateRevision.ToString());
-        Field("状态", candidate.ProcessingState);
-        Field("原因", candidate.Reason ?? "—");
-        Field("指纹", candidate.EvidenceFingerprint ?? "—");
-        Field("更新时间", candidate.UpdatedAt ?? "—");
-
-        panel.Children.Add(new TextBlock
-        {
-            Text = $"关联证据（{evidence.Count}）",
-            Style = Application.Current.Resources["SectionHeaderTextStyle"] as Style,
-        });
-        foreach (var e in evidence)
-        {
-            panel.Children.Add(new Border
+            var panel = new StackPanel { Spacing = 10 };
+            void Field(string label, string value)
             {
-                Background = (Brush)Application.Current.Resources["Surface2Brush"],
-                CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(10),
-                Child = new StackPanel
+                var grid = new Grid { ColumnSpacing = 8 };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                var k = new TextBlock
                 {
-                    Spacing = 2,
-                    Children =
+                    Text = label,
+                    FontSize = 12,
+                    Foreground = (Brush)Application.Current.Resources["MutedTextBrush"],
+                };
+                var v = new TextBlock
+                {
+                    Text = value,
+                    FontSize = 12.5,
+                    TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = true,
+                };
+                Grid.SetColumn(k, 0);
+                Grid.SetColumn(v, 1);
+                grid.Children.Add(k);
+                grid.Children.Add(v);
+                panel.Children.Add(grid);
+            }
+
+            Field("candidate", candidate.CandidateRef);
+            Field("revision", candidate.CandidateRevision.ToString());
+            Field("状态", candidate.ProcessingState);
+            Field("原因", candidate.Reason ?? "—");
+            Field("指纹", candidate.EvidenceFingerprint ?? "—");
+            Field("更新时间", candidate.UpdatedAt ?? "—");
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"关联证据（{evidence.Count}）",
+                Style = Application.Current.Resources["SectionHeaderTextStyle"] as Style,
+            });
+            foreach (var e in evidence)
+            {
+                panel.Children.Add(new Border
+                {
+                    Background = (Brush)Application.Current.Resources["Surface2Brush"],
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(10),
+                    Child = new StackPanel
                     {
-                        new TextBlock
+                        Spacing = 2,
+                        Children =
                         {
-                            Text = $"{e.SourceRef}@{e.SourceRevision} · {e.EventRole ?? "?"} · {e.ObservedAt ?? ""}",
-                            FontSize = 11.5,
-                        },
-                        new TextBlock
-                        {
-                            Text = e.EventExcerpt ?? "",
-                            FontSize = 11,
-                            TextWrapping = TextWrapping.Wrap,
-                            Foreground = (Brush)Application.Current.Resources["MutedTextBrush"],
+                            new TextBlock
+                            {
+                                Text = $"{e.SourceRef}@{e.SourceRevision} · {e.EventRole ?? "?"} · {e.ObservedAt ?? ""}",
+                                FontSize = 11.5,
+                            },
+                            new TextBlock
+                            {
+                                Text = e.EventExcerpt ?? "",
+                                FontSize = 11,
+                                TextWrapping = TextWrapping.Wrap,
+                                Foreground = (Brush)Application.Current.Resources["MutedTextBrush"],
+                            },
                         },
                     },
-                },
-            });
-        }
+                });
+            }
 
-        Drawer.Open($"候选 {candidate.CandidateRef}", panel);
+            Drawer.Open($"候选 {candidate.CandidateRef}", panel);
+
+        });
     }
 
-    private async void BtnExport_Click(object sender, RoutedEventArgs e)
+    private void BtnExport_Click(object sender, RoutedEventArgs e)
     {
-        if (_rows.Count == 0)
+        UiThread.Run(DispatcherQueue, "AiChangesView.BtnExport_Click", async () =>
         {
-            return;
-        }
-        var keys = new[] { "candidate_ref", "revision", "processing_state", "reason", "evidence_count", "updated_at" };
-        var rows = _rows.Select(r => new[]
-        {
-            r.CandidateRef, r.CandidateRevision.ToString(), r.ProcessingState, r.Reason, r.EvidenceCount.ToString(), r.UpdatedAt,
-        }).ToList();
-        await Exporter.SaveWithPickerAsync("ai-changes.json", Exporter.ToJson(keys, rows), ".json", "JSON");
+            if (_rows.Count == 0)
+            {
+                return;
+            }
+            var keys = new[] { "candidate_ref", "revision", "processing_state", "reason", "evidence_count", "updated_at" };
+            var rows = _rows.Select(r => new[]
+            {
+                r.CandidateRef, r.CandidateRevision.ToString(), r.ProcessingState, r.Reason, r.EvidenceCount.ToString(), r.UpdatedAt,
+            }).ToList();
+            await Exporter.SaveWithPickerAsync("ai-changes.json", Exporter.ToJson(keys, rows), ".json", "JSON");
+
+        });
     }
 }

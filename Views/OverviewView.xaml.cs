@@ -16,29 +16,16 @@ public sealed partial class OverviewView : UserControl
 {
     private readonly IStorageService? _storage;
     private string? _dbPath;
-    private bool _loaded;
 
     public OverviewView()
     {
         InitializeComponent();
         _storage = ServiceLocator.Get<IStorageService>();
-        Loaded += OverviewView_Loaded;
+        Loaded += (_, _) => UiThread.Run(DispatcherQueue, "OverviewView.Loaded", ReloadAsync);
     }
 
-    private async void OverviewView_Loaded(object sender, RoutedEventArgs e)
-    {
-        if (_loaded)
-        {
-            return;
-        }
-        _loaded = true;
-        await ReloadAsync();
-    }
-
-    private async void BtnRefresh_Click(object sender, RoutedEventArgs e)
-    {
-        await ReloadAsync();
-    }
+    private void BtnRefresh_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "OverviewView.Refresh", ReloadAsync);
 
     private string? ResolveDbPath()
     {
@@ -56,54 +43,82 @@ public sealed partial class OverviewView : UserControl
         _dbPath = ResolveDbPath();
         if (_dbPath is null || _storage is null)
         {
-            TxtSourceBadge.Text = "未连接：未找到记忆库";
+            TxtSourceBadge.Text = "未连接（未找到记忆库）";
             SourceBadge.Background = (Brush)Application.Current.Resources["DangerSoftBrush"];
+            TxtHealthScore.Text = "—";
+            TxtHealthTitle.Text = "还没有找到记忆库";
+            TxtHealthSummary.Text = "请先到「安装」页选择部署目录，或确认记忆库是否已部署在本机。";
             TxtClaimTotal.Text = "—";
-            TxtEventTotal.Text = "—";
+            TxtWorkTotal.Text = "—";
+            TxtCandidateWaiting.Text = "—";
             TxtDbSize.Text = "—";
-            TxtClaimSplit.Text = "请先在「安装」页选择部署目录";
             return;
         }
 
         var stats = await _storage.GetOverviewStatsAsync(_dbPath);
         if (stats is null)
         {
-            TxtSourceBadge.Text = "已断线：库打开失败";
+            TxtSourceBadge.Text = "读取失败（记忆库无法打开）";
             SourceBadge.Background = (Brush)Application.Current.Resources["DangerSoftBrush"];
+            TxtHealthTitle.Text = "读取失败";
+            TxtHealthSummary.Text = "记忆库文件无法打开，可能正在被其他程序独占。请稍后重试。";
             return;
         }
 
-        TxtSourceBadge.Text = $"live · schema {stats.SchemaVersion} · epoch {stats.MemoryEpoch}";
+        TxtSourceBadge.Text = $"已连接 · 数据结构 v{stats.SchemaVersion} · 记忆版本 {stats.MemoryEpoch}";
         SourceBadge.Background = (Brush)Application.Current.Resources["SuccessSoftBrush"];
 
-        TxtClaimTotal.Text = stats.ClaimTotal.ToString();
-        TxtClaimSplit.Text = $"active {stats.ClaimActive} · proposed {stats.ClaimProposed}";
-        TxtEventTotal.Text = stats.EventTotal.ToString();
-        TxtNewestEvent.Text = stats.NewestEventAt is { } newest
-            ? $"最近 {newstLocal(newest)}"
-            : "—";
+        // 四个关键数字 + 人话注解
+        TxtClaimTotal.Text = $"{stats.ClaimTotal} 条";
+        TxtClaimHint.Text = $"其中 {stats.ClaimActive} 条已生效、{stats.ClaimProposed} 条待确认";
+
+        var workTotal = stats.WorkDone + stats.WorkFailed + stats.WorkPending;
+        TxtWorkTotal.Text = $"{workTotal} 个";
+        TxtWorkHint.Text = stats.WorkFailed > 0
+            ? $"失败 {stats.WorkFailed} 个（可到「队列」页重试）、待处理 {stats.WorkPending} 个"
+            : $"全部处理完成（成功 {stats.WorkDone}、待处理 {stats.WorkPending}）";
+        TxtWorkHint.Foreground = stats.WorkFailed > 0
+            ? StatusVisuals.BrushOf("failed")
+            : (Brush)Application.Current.Resources["MutedTextBrush"];
+
+        TxtCandidateWaiting.Text = $"{stats.CandidateWaiting} 条";
+        TxtCandidateHint.Text = "还需要更多来源证据才能转正为记忆";
+
         TxtDbSize.Text = Exporter.HumanSize(stats.DbSizeBytes);
-        TxtSchema.Text = $"schema_version {stats.SchemaVersion}";
-        TxtCandidateWaiting.Text = stats.CandidateWaiting.ToString();
-        TxtWorkTotal.Text = (stats.WorkDone + stats.WorkFailed + stats.WorkPending).ToString();
-        TxtWorkSplit.Text = $"done {stats.WorkDone} · failed {stats.WorkFailed} · pending {stats.WorkPending}";
-        TxtDataDir.Text = stats.DataDirectory ?? "—";
-        TxtAgentId.Text = $"agent_id {stats.AgentId ?? "—"}";
+        TxtDbHint.Text = "记忆库文件当前大小";
+
+        // 更多信息
+        TxtEventTotal.Text = $"{stats.EventTotal} 条";
+        TxtNewestEvent.Text = stats.NewestEventAt is { } newest ? FormatRelative(newest) : "未记录";
+        TxtDataDir.Text = stats.DataDirectory ?? "未记录";
+        TxtSchema.Text = $"v{stats.SchemaVersion} · 记忆版本 {stats.MemoryEpoch}";
 
         var items = BuildHealthItems(stats);
-        RenderHealthRows(items);
+        RenderHealth(items, stats);
         RenderAttention(stats);
-        _ = RefreshPluginVersionAsync(items);
+        _ = RefreshPluginVersionAsync(items, stats);
     }
 
-    private static string newstLocal(DateTimeOffset ts)
+    private static string FormatRelative(DateTimeOffset ts)
     {
         var local = ts.ToLocalTime();
-        var days = (DateTimeOffset.Now - local).TotalDays;
-        return days < 1 ? $"今天 {local:HH:mm}" : $"{local:yyyy-MM-dd}";
+        var span = DateTimeOffset.Now - local;
+        if (span.TotalMinutes < 1)
+        {
+            return "刚刚";
+        }
+        if (span.TotalHours < 1)
+        {
+            return $"{(int)span.TotalMinutes} 分钟前（{local:HH:mm}）";
+        }
+        if (span.TotalDays < 1)
+        {
+            return $"{(int)span.TotalHours} 小时前（{local:HH:mm}）";
+        }
+        return $"{(int)span.TotalDays} 天前（{local:yyyy-MM-dd}）";
     }
 
-    // ---------- 健康分（WebUI 五扣分项口径） ----------
+    // ---------- 健康分 ----------
 
     private static List<HealthItem> BuildHealthItems(OverviewStats stats)
     {
@@ -111,27 +126,29 @@ public sealed partial class OverviewView : UserControl
 
         var proposedRatio = stats.ClaimTotal == 0 ? 0 : (double)stats.ClaimProposed / stats.ClaimTotal;
         items.Add(new HealthItem(
-            "proposed 积压",
-            $"{stats.ClaimProposed} / {stats.ClaimTotal}（{proposedRatio:P0}）",
+            "待确认记忆",
+            $"{stats.ClaimProposed} / {stats.ClaimTotal} 条（{proposedRatio:P0}）尚未转正",
             proposedRatio > 0.8 ? HealthState.Danger : proposedRatio > 0.5 ? HealthState.Warn : HealthState.Ok));
 
         items.Add(new HealthItem(
-            "失败任务",
-            $"{stats.WorkFailed} 条",
+            "后台任务失败",
+            stats.WorkFailed > 0 ? $"{stats.WorkFailed} 个任务失败，可在「队列」页重试" : "没有失败任务",
             stats.WorkFailed > 20 ? HealthState.Danger : stats.WorkFailed > 0 ? HealthState.Warn : HealthState.Ok));
 
         items.Add(new HealthItem(
             "候选等待证据",
-            $"{stats.CandidateWaiting} 条",
+            stats.CandidateWaiting > 100
+                ? $"{stats.CandidateWaiting} 条候选仍在等待更多来源证据"
+                : $"{stats.CandidateWaiting} 条候选等待证据",
             stats.CandidateWaiting > 400 ? HealthState.Danger : stats.CandidateWaiting > 100 ? HealthState.Warn : HealthState.Ok));
 
         var sizeMb = stats.DbSizeBytes / (1024 * 1024);
         items.Add(new HealthItem(
-            "存储体积",
-            Exporter.HumanSize(stats.DbSizeBytes),
+            "记忆库体积",
+            $"{Exporter.HumanSize(stats.DbSizeBytes)}" + (sizeMb > 512 ? "（偏大，可考虑归档）" : "（正常）"),
             sizeMb > 512 ? HealthState.Warn : HealthState.Ok));
 
-        items.Add(new HealthItem("插件版本", "检查中…", HealthState.Off));
+        items.Add(new HealthItem("插件版本", "正在检查是否有新版本…", HealthState.Off));
         return items;
     }
 
@@ -149,54 +166,82 @@ public sealed partial class OverviewView : UserControl
         return Math.Max(0, score);
     }
 
-    private void RenderHealthRows(List<HealthItem> items)
+    /// <summary>渲染健康分：分数 + 一句话结论（人话）+ 明细列表。</summary>
+    private void RenderHealth(List<HealthItem> items, OverviewStats? stats)
     {
         var score = ComputeScore(items);
         TxtHealthScore.Text = score.ToString();
         HealthBar.Value = score;
-        HealthBar.Foreground = score >= 80
-            ? (Brush)Application.Current.Resources["SuccessBrush"]
+
+        var (title, tint, conclusion) = score >= 80
+            ? ("记忆健康：状态良好", "ok", "记忆库运行正常，没有需要立即处理的问题。")
             : score >= 60
-                ? (Brush)Application.Current.Resources["WarningBrush"]
-                : (Brush)Application.Current.Resources["DangerBrush"];
+                ? ("记忆健康：需要注意", "pending", BuildConclusion(items, "有以下几项建议处理："))
+                : ("记忆健康：需要处理", "failed", BuildConclusion(items, "有以下问题需要尽快处理："));
+
+        TxtHealthTitle.Text = title;
+        TxtHealthTitle.Foreground = StatusVisuals.BrushOf(tint);
+        TxtHealthScore.Foreground = StatusVisuals.BrushOf(tint);
+        TxtHealthSummary.Text = conclusion;
+        HealthBar.Foreground = StatusVisuals.BrushOf(tint);
 
         HealthList.Children.Clear();
         foreach (var item in items)
         {
-            var row = new Grid { ColumnSpacing = 10 };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-            var led = Led(item.State);
-            Grid.SetColumn(led, 0);
-            row.Children.Add(led);
-
-            var name = new TextBlock
-            {
-                Text = item.Name,
-                FontSize = 12.5,
-                VerticalAlignment = VerticalAlignment.Center,
-                Foreground = (Brush)Application.Current.Resources["TextBrush"],
-            };
-            Grid.SetColumn(name, 1);
-            row.Children.Add(name);
-
-            var detail = new TextBlock
-            {
-                Text = item.Detail,
-                FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center,
-                Foreground = (Brush)Application.Current.Resources["MutedTextBrush"],
-            };
-            Grid.SetColumn(detail, 2);
-            row.Children.Add(detail);
-
-            HealthList.Children.Add(row);
+            HealthList.Children.Add(BuildHealthRow(item));
         }
     }
 
-    private async System.Threading.Tasks.Task RefreshPluginVersionAsync(List<HealthItem> items)
+    private static string BuildConclusion(List<HealthItem> items, string prefix)
+    {
+        var problems = new List<string>();
+        foreach (var item in items)
+        {
+            if (item.State is HealthState.Warn or HealthState.Danger)
+            {
+                // 只取“数字 + 名称”这一小段，避免长句堆叠
+                problems.Add(item.Name + "——" + item.Detail);
+            }
+        }
+        return problems.Count == 0 ? "没有需要处理的问题。" : prefix + " " + string.Join("；", problems);
+    }
+
+    private static Grid BuildHealthRow(HealthItem item)
+    {
+        var row = new Grid { ColumnSpacing = 10 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var led = Led(item.State);
+        Grid.SetColumn(led, 0);
+        row.Children.Add(led);
+
+        var name = new TextBlock
+        {
+            Text = item.Name,
+            FontSize = 12.5,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(name, 1);
+        row.Children.Add(name);
+
+        var detail = new TextBlock
+        {
+            Text = item.Detail,
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = item.State == HealthState.Ok
+                ? (Brush)Application.Current.Resources["MutedTextBrush"]
+                : StatusVisuals.BrushOf(item.State == HealthState.Danger ? "failed" : "pending"),
+        };
+        Grid.SetColumn(detail, 2);
+        row.Children.Add(detail);
+        return row;
+    }
+
+    private async System.Threading.Tasks.Task RefreshPluginVersionAsync(List<HealthItem> items, OverviewStats stats)
     {
         var plugin = ServiceLocator.Get<IPluginService>();
         if (plugin is null)
@@ -209,23 +254,24 @@ public sealed partial class OverviewView : UserControl
         {
             return;
         }
+
         var state = HealthState.Off;
-        var detail = "待接入";
+        var detail = "未能检查（网络不可用）";
         if (check.Error is null && check.InstalledVersion is not null && check.LatestVersion is not null)
         {
             if (UpdateService.IsNewerThan(check.LatestVersion, check.InstalledVersion))
             {
                 state = HealthState.Warn;
-                detail = $"{check.InstalledVersion} → {check.LatestVersion} 可升级";
+                detail = $"已安装 {check.InstalledVersion}，可升级到 {check.LatestVersion}（到「更新」页操作）";
             }
             else
             {
                 state = HealthState.Ok;
-                detail = $"{check.InstalledVersion}（最新）";
+                detail = $"已是最新版本 {check.InstalledVersion}";
             }
         }
         items[index] = new HealthItem("插件版本", detail, state);
-        RenderHealthRows(items);
+        RenderHealth(items, stats);
     }
 
     private static Border Led(HealthState state)
@@ -253,28 +299,25 @@ public sealed partial class OverviewView : UserControl
     {
         AttentionList.Children.Clear();
 
-        void AddBadge(string text, BadgeState state)
-        {
-            AttentionList.Children.Add(new StatBadge { Text = text, State = state });
-        }
+        void Add(string text, BadgeState state) => AttentionList.Children.Add(new StatBadge { Text = text, State = state });
 
-        if (stats.ClaimProposed > 100)
-        {
-            AddBadge($"proposed 积压 {stats.ClaimProposed} 条（候选未转正）", BadgeState.Warn);
-        }
         if (stats.WorkFailed > 0)
         {
-            AddBadge($"失败任务 {stats.WorkFailed} 条（队列页可重试）", BadgeState.Danger);
+            Add($"有 {stats.WorkFailed} 个后台任务失败，可在「队列」页一键重试", BadgeState.Danger);
+        }
+        if (stats.ClaimProposed > 100)
+        {
+            Add($"有 {stats.ClaimProposed} 条记忆等待确认（候选尚未转正）", BadgeState.Warn);
         }
         if (stats.CandidateWaiting > 100)
         {
-            AddBadge($"候选等待证据 {stats.CandidateWaiting} 条", BadgeState.Info);
+            Add($"有 {stats.CandidateWaiting} 条候选仍在等待来源证据", BadgeState.Info);
         }
         if (AttentionList.Children.Count == 0)
         {
             AttentionList.Children.Add(new TextBlock
             {
-                Text = "暂无需要关注的事项。",
+                Text = "暂无需要关注的事项，一切正常。",
                 FontSize = 12.5,
                 Foreground = (Brush)Application.Current.Resources["MutedTextBrush"],
             });

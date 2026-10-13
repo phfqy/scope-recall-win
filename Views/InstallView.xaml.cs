@@ -1,12 +1,12 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using ScopeRecallWin.Helpers;
 using ScopeRecallWin.Infrastructure;
 using ScopeRecallWin.Services;
 using Windows.Storage.Pickers;
@@ -15,6 +15,9 @@ namespace ScopeRecallWin.Views;
 
 public sealed partial class InstallView : UserControl
 {
+    /// <summary>部署确认语句（勾选复选框即代表本人确认，等价于手写授权句）。</summary>
+    private const string DeployConfirmSentence = "我确认在本机部署记忆插件";
+
     private readonly IPluginService? _plugin;
     private readonly ObservableCollection<string> _planSteps = new();
     private readonly ObservableCollection<string> _deployLog = new();
@@ -27,74 +30,110 @@ public sealed partial class InstallView : UserControl
         _plugin = ServiceLocator.Get<IPluginService>();
         PlanList.ItemsSource = _planSteps;
         DeployLogList.ItemsSource = _deployLog;
-        Loaded += InstallView_Loaded;
+        Loaded += (_, _) => UiThread.Run(DispatcherQueue, "InstallView.Loaded", LoadAsync);
     }
 
-    private async void InstallView_Loaded(object sender, RoutedEventArgs e)
+    private async Task LoadAsync()
     {
         await RefreshEnvironmentAsync();
-        // 默认目标目录：已检测到的根目录优先，否则 E:\ScopeRecall
         TxtTargetRoot.Text = PathDiscovery.FindMemoryRoot(App.Settings) ?? @"E:\ScopeRecall";
         UpdateRootState();
     }
 
-    // ---------- 环境检测 ----------
+    // ---------- 环境状态 ----------
 
     private async Task RefreshEnvironmentAsync()
     {
         if (_plugin is null)
         {
-            TxtEnvError.Text = "插件服务不可用。";
-            TxtEnvError.Visibility = Visibility.Visible;
+            ShowEnv("danger", "插件服务不可用", "内部服务初始化失败，请重启程序。");
             return;
         }
 
-        var env = await _plugin.ProbeEnvironmentAsync();
-        TxtRoot.Text = env.Root ?? "未检测到";
-        TxtInstalled.Text = env.InstalledVersion ?? "未安装";
-        TxtUv.Text = env.ExternalUvAvailable ? "可用" : "缺失（升级换包需要）";
-
-        if (env.Error is not null)
-        {
-            TxtEnvError.Text = env.Error;
-            TxtEnvError.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            TxtEnvError.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private async void BtnRefreshEnv_Click(object sender, RoutedEventArgs e)
-    {
-        await RefreshEnvironmentAsync();
-    }
-
-    // ---------- 目录选择 ----------
-
-    private async void BtnBrowse_Click(object sender, RoutedEventArgs e)
-    {
         try
         {
-            var picker = new FolderPicker();
-            picker.FileTypeFilter.Add("*");
-            if (App.MainWindow is not null)
+            var env = await _plugin.ProbeEnvironmentAsync();
+            if (env.Root is null)
             {
-                var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
-                WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+                ShowEnv("pending", "尚未部署记忆插件", env.Error ?? "选择目录后点击下方「开始部署」即可。");
+                return;
             }
-            var folder = await picker.PickSingleFolderAsync();
-            if (folder is not null)
+
+            var version = env.InstalledVersion ?? "未安装";
+            var parts = new System.Collections.Generic.List<string>
             {
-                TxtTargetRoot.Text = folder.Path;
-                UpdateRootState();
+                $"记忆库位置：{env.Root}",
+                $"插件版本：{version}",
+                env.ExternalUvAvailable ? "升级组件：已就绪" : "升级组件：缺失（升级时会提示）",
+            };
+            if (env.MemoryDbSize is { } size)
+            {
+                parts.Add($"记忆库大小：{Exporter.HumanSize(size)}");
             }
+
+            ShowEnv(
+                env.InstalledVersion is null ? "pending" : "ok",
+                env.InstalledVersion is null ? "记忆库已存在，但插件版本未知" : $"已安装记忆插件 {version}",
+                string.Join(" · ", parts));
+
+            TxtEnvError.Visibility = Visibility.Collapsed;
         }
         catch (Exception ex)
         {
-            TxtRootState.Text = $"目录选择器不可用：{ex.Message}（可直接在输入框中键入路径）";
+            App.LogCrash("InstallView.RefreshEnvironment", ex);
+            ShowEnv("danger", "环境检测失败", $"{ex.Message}（已记录日志，程序继续运行）");
         }
     }
+
+    private void ShowEnv(string state, string headline, string detail)
+    {
+        var tint = state switch
+        {
+            "ok" => "ok",
+            "pending" => "pending",
+            _ => "failed",
+        };
+        EnvLed.Background = StatusVisuals.BrushOf(tint);
+        TxtEnvHeadline.Text = headline;
+        TxtEnvDetail.Text = detail;
+    }
+
+    private void ShowEnvError(string message)
+    {
+        TxtEnvError.Text = message;
+        TxtEnvError.Visibility = Visibility.Visible;
+    }
+
+    private void BtnRefreshEnv_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "InstallView.RefreshEnv", RefreshEnvironmentAsync);
+
+    // ---------- 目标目录 ----------
+
+    private void BtnBrowse_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "InstallView.Browse", async () =>
+        {
+            try
+            {
+                var picker = new FolderPicker();
+                picker.FileTypeFilter.Add("*");
+                if (App.MainWindow is not null)
+                {
+                    var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+                    WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+                }
+                var folder = await picker.PickSingleFolderAsync();
+                if (folder is not null)
+                {
+                    TxtTargetRoot.Text = folder.Path;
+                    UpdateRootState();
+                }
+            }
+            catch (Exception ex)
+            {
+                TxtRootState.Text = $"目录选择器不可用：{ex.Message}（可直接在输入框中键入路径）";
+                TxtRootState.Foreground = StatusVisuals.BrushOf("failed");
+            }
+        });
 
     private void BtnUseDefault_Click(object sender, RoutedEventArgs e)
     {
@@ -104,130 +143,147 @@ public sealed partial class InstallView : UserControl
 
     private void BtnUseAppDir_Click(object sender, RoutedEventArgs e)
     {
-        var appDir = Path.Combine(
+        TxtTargetRoot.Text = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Programs", "ScopeRecallWin", "data");
-        TxtTargetRoot.Text = appDir;
         UpdateRootState();
     }
 
     private void UpdateRootState()
     {
-        var root = (TxtTargetRoot.Text ?? "").Trim();
-        if (root.Length == 0)
+        try
         {
-            TxtRootState.Text = "请选择部署目录。";
-            return;
+            var root = (TxtTargetRoot.Text ?? "").Trim();
+            if (root.Length == 0)
+            {
+                TxtRootState.Text = "请选择部署目录。";
+                TxtRootState.Foreground = (Brush)Application.Current.Resources["MutedTextBrush"];
+                return;
+            }
+
+            if (PathDiscovery.IsMemoryRoot(root))
+            {
+                TxtRootState.Text = "✓ 该目录已有记忆库：将复用校验，不会重装，也不会删除任何数据。";
+                TxtRootState.Foreground = StatusVisuals.BrushOf("ok");
+            }
+            else
+            {
+                var exists = Directory.Exists(root);
+                var nonEmpty = exists && Directory.EnumerateFileSystemEntries(root).Any();
+                TxtRootState.Text = nonEmpty
+                    ? "该目录已存在且非空：将只新增记忆插件所需的子目录，不动其他文件。"
+                    : "全新目录：将在这里创建记忆插件的运行环境与记忆库。";
+                TxtRootState.Foreground = (Brush)Application.Current.Resources["MutedTextBrush"];
+            }
         }
-        if (PathDiscovery.IsMemoryRoot(root))
+        catch (Exception ex)
         {
-            TxtRootState.Text = "该目录已存在记忆库：将进入复用模式（校验 + 权限自检，不重装）。";
-        }
-        else if (Directory.Exists(root) && Directory.EnumerateFileSystemEntries(root).Any())
-        {
-            TxtRootState.Text = "目录已存在且非空：将作为全新部署目标（不会删除已有文件，仅新增 shared\\ 与 shared-venv\\）。";
-        }
-        else
-        {
-            TxtRootState.Text = "全新部署目标。";
+            App.LogCrash("InstallView.UpdateRootState", ex);
+            TxtRootState.Text = $"该目录不可访问：{ex.Message}";
+            TxtRootState.Foreground = StatusVisuals.BrushOf("failed");
         }
     }
 
     // ---------- 部署计划 ----------
 
-    private async void BtnPlan_Click(object sender, RoutedEventArgs e)
-    {
-        if (_plugin is null)
+    private void BtnPlan_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "InstallView.Plan", async () =>
         {
-            return;
-        }
-        var root = (TxtTargetRoot.Text ?? "").Trim();
-        if (root.Length == 0)
-        {
-            TxtPlanWarning.Text = "请先选择部署目录。";
-            TxtPlanWarning.Visibility = Visibility.Visible;
-            return;
-        }
+            if (_plugin is null)
+            {
+                return;
+            }
+            var root = (TxtTargetRoot.Text ?? "").Trim();
+            if (root.Length == 0)
+            {
+                TxtPlanWarning.Text = "请先选择部署目录。";
+                TxtPlanWarning.Visibility = Visibility.Visible;
+                return;
+            }
 
-        var plan = await _plugin.PlanInstallAsync(root);
-        _plannedRoot = root;
-        _planSteps.Clear();
-        foreach (var step in plan.Steps)
-        {
-            _planSteps.Add(step);
-        }
-        if (plan.FreeDiskBytes is { } free)
-        {
-            _planSteps.Add($"目标磁盘可用空间：{free / (1024 * 1024 * 1024.0):F1} GB");
-        }
-        if (plan.Warning is { } warning)
-        {
-            TxtPlanWarning.Text = warning;
-            TxtPlanWarning.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            TxtPlanWarning.Visibility = Visibility.Collapsed;
-        }
-    }
+            var plan = await _plugin.PlanInstallAsync(root);
+            _plannedRoot = root;
+            _planSteps.Clear();
+            foreach (var step in plan.Steps)
+            {
+                _planSteps.Add(step);
+            }
+            if (plan.FreeDiskBytes is { } free)
+            {
+                _planSteps.Add($"目标磁盘可用空间：{free / (1024 * 1024 * 1024.0):F1} GB");
+            }
+            TxtPlanWarning.Text = plan.Warning ?? "";
+            TxtPlanWarning.Visibility = plan.Warning is null ? Visibility.Collapsed : Visibility.Visible;
+        });
 
     // ---------- 执行部署 ----------
 
-    private async void BtnDeploy_Click(object sender, RoutedEventArgs e)
-    {
-        if (_plugin is null || _deploying)
+    private void BtnDeploy_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "InstallView.Deploy", async () =>
         {
-            return;
-        }
-        var root = _plannedRoot ?? (TxtTargetRoot.Text ?? "").Trim();
-        if (root.Length == 0)
-        {
-            TxtDeployState.Text = "请先生成部署计划。";
-            return;
-        }
-        var auth = (TxtAuthorization.Text ?? "").Trim();
-        if (auth.Length < 6)
-        {
-            TxtDeployState.Text = "授权句不足 6 字：请用一句话确认你本人了解本次部署。";
-            return;
-        }
-        if (ChkConfirm.IsChecked != true)
-        {
-            TxtDeployState.Text = "请勾选确认框。";
-            return;
-        }
+            if (_plugin is null || _deploying)
+            {
+                return;
+            }
+            var root = (TxtTargetRoot.Text ?? "").Trim();
+            if (root.Length == 0)
+            {
+                SetDeployState("请先选择部署目录。", "failed");
+                return;
+            }
+            if (ChkConfirm.IsChecked != true)
+            {
+                SetDeployState("请先勾选确认框：需要你本人确认本次部署。", "pending");
+                return;
+            }
 
-        _deploying = true;
-        BtnDeploy.IsEnabled = false;
-        _deployLog.Clear();
-        TxtDeployState.Text = "部署进行中…";
+            _deploying = true;
+            BtnDeploy.IsEnabled = false;
+            _deployLog.Clear();
+            DeployLogList.Visibility = Visibility.Visible;
+            SetDeployState("部署进行中，请不要关闭程序…", "pending");
 
-        var progress = new Progress<PluginInstallProgress>(p =>
-        {
-            _deployLog.Add($"[{p.Step}] {p.State} {p.Detail}".Trim());
-            DeployLogList.ScrollIntoView(_deployLog[^1]);
+            var progress = new Progress<PluginInstallProgress>(p =>
+            {
+                _deployLog.Add($"[{p.Step}] {StateText(p.State)} {p.Detail}".Trim());
+                DeployLogList.ScrollIntoView(_deployLog[^1]);
+            });
+
+            var result = await _plugin.ApplyInstallAsync(root, DeployConfirmSentence, progress);
+
+            if (result.Success)
+            {
+                var version = result.InstalledVersion is null ? "" : $"（插件版本 {result.InstalledVersion}）";
+                SetDeployState($"✓ 部署完成{version}。{result.Error ?? "目录权限检查通过，控制台与 Agent 都可以读写。"}", "ok");
+                App.Settings.MemoryRootPath = root;
+                App.Settings.Save();
+                await RefreshEnvironmentAsync();
+            }
+            else
+            {
+                SetDeployState($"✗ 部署失败：{result.Error}", "failed");
+                foreach (var line in result.Steps)
+                {
+                    _deployLog.Add("  · " + line);
+                }
+            }
+
+            _deploying = false;
+            BtnDeploy.IsEnabled = true;
         });
 
-        var result = await _plugin.ApplyInstallAsync(root, auth, progress);
-
-        if (result.Success)
-        {
-            TxtDeployState.Text = $"部署完成：{(result.InstalledVersion is null ? "" : $"版本 {result.InstalledVersion} · ")}{result.Error ?? "权限自检通过"}";
-            // 部署成功后把根目录写入设置，供其他页面使用
-            App.Settings.MemoryRootPath = root;
-            App.Settings.Save();
-            await RefreshEnvironmentAsync();
-        }
-        else
-        {
-            TxtDeployState.Text = $"部署失败：{result.Error}";
-            foreach (var line in result.Steps)
-            {
-                _deployLog.Add($"  · {line}");
-            }
-        }
-
-        _deploying = false;
-        BtnDeploy.IsEnabled = true;
+    private void SetDeployState(string message, string state)
+    {
+        TxtDeployState.Text = message;
+        TxtDeployState.Foreground = StatusVisuals.BrushOf(state);
     }
+
+    /// <summary>部署步骤状态中文名。</summary>
+    private static string StateText(string? state) => state switch
+    {
+        "running" => "进行中…",
+        "done" => "完成",
+        "failed" => "失败",
+        _ => state ?? "",
+    };
 }

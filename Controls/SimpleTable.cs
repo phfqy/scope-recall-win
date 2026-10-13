@@ -6,12 +6,18 @@ using Microsoft.UI.Xaml.Media;
 
 namespace ScopeRecallWin.Controls;
 
-/// <summary>表格列定义（宽度 + 表头 + 取值）。</summary>
+/// <summary>表格列定义（宽度 + 表头 + 取值 + 可选着色与悬停提示）。</summary>
 public sealed class TableColumn
 {
     public required string Header { get; init; }
     public double Width { get; init; } = 120;
     public required Func<object, string> Value { get; init; }
+
+    /// <summary>可选：按行决定单元格颜色（语义色：成功绿 / 失败红 / 进行中蓝 / 警告琥珀）。</summary>
+    public Func<object, Brush?>? Color { get; init; }
+
+    /// <summary>可选：单元格悬停提示（常用于显示英文原名或完整值）。</summary>
+    public Func<object, string?>? Tooltip { get; init; }
 }
 
 /// <summary>
@@ -113,6 +119,20 @@ public sealed partial class SimpleTable : UserControl
                     Margin = new Thickness(10, 0, 10, 0),
                     VerticalAlignment = VerticalAlignment.Center,
                 };
+
+                // 语义色：成功绿 / 失败红 / 进行中蓝 / 警告琥珀（失败额外加粗，便于扫视）
+                if (columns[i].Color?.Invoke(row!) is { } brush)
+                {
+                    tb.Foreground = brush;
+                    tb.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+                }
+
+                // 悬停提示（英文原名或完整内容）
+                if (columns[i].Tooltip?.Invoke(row!) is { Length: > 0 } tip)
+                {
+                    ToolTipService.SetToolTip(tb, tip);
+                }
+
                 Grid.SetColumn(tb, i);
                 grid.Children.Add(tb);
             }
