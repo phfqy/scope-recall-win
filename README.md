@@ -1,8 +1,16 @@
-# Scope Recall Win —— WinUI 3 桌面管理控制台（工程骨架）
+# Scope Recall Win —— WinUI 3 桌面管理控制台
+
+[![build](https://github.com/phfqy/scope-recall-win/actions/workflows/build.yml/badge.svg)](https://github.com/phfqy/scope-recall-win/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/phfqy/scope-recall-win)](https://github.com/phfqy/scope-recall-win/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010.0.19041%2B-blue.svg)](https://learn.microsoft.com/windows/apps/windows-app-sdk/)
 
 Scope Recall v3 记忆核心的 Windows 桌面管理控制台。**WinUI 3（Windows App SDK）+ C#/XAML**，
 18 视图全功能规划，UI 采用 Fluent Design 自由设计（不复制 WebUI 风格），功能覆盖以
 `WIN-APP-PROMPTS.md` 的【附 1 功能全景对照表】为准。
+
+**📦 直接下载安装**：[Releases → v1.0.0](https://github.com/phfqy/scope-recall-win/releases/latest)
+（`scope-recall-win_1.0.0.0_x64.msix`，含安装说明与 SHA256）
 
 > 本目录是 **P0 骨架**：可打开、可导航、主题可切换，服务层为接口/占位实现。
 > P1（视图与交互）、P2（读写数据通道）、P3（runtime-config 编辑器 + worker 启停）、

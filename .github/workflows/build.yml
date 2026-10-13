@@ -1,0 +1,64 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        platform: [x64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore scope-recall-win.csproj -p:Platform=${{ matrix.platform }}
+
+      - name: Build (Release)
+        run: dotnet build scope-recall-win.csproj -p:Platform=${{ matrix.platform }} -c Release --no-restore
+
+      - name: Static verification
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pillow
+          python verify_static.py
+
+  package:
+    runs-on: windows-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Produce MSIX (unsigned)
+        run: >
+          dotnet publish scope-recall-win.csproj -p:Platform=x64 -c Release
+          -p:GenerateAppxPackageOnBuild=true
+          -p:AppxPackageSigningEnabled=false
+
+      - name: Upload MSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: msix-x64
+          path: AppPackages/**/*.msix
+          if-no-files-found: error
