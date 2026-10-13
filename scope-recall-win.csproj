@@ -41,4 +41,15 @@
   <PropertyGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'=='true' and '$(EnableMsixTooling)'=='true'">
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
   </PropertyGroup>
+
+  <!-- unpackaged 形态（WindowsPackageType=None）专用：
+       让 Windows App SDK 注入 MddBootstrap 自动初始化器，进程启动时先激活
+       Microsoft.WindowsAppRuntime 再启动 XAML。不开启则以普通 exe 运行时会
+       0xC000027B（WinUI 未引导）。打包形态下本段不生效。 -->
+  <PropertyGroup Condition="'$(WindowsPackageType)' == 'None'">
+    <WindowsAppSdkBootstrapInitialize>true</WindowsAppSdkBootstrapInitialize>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(WindowsPackageType)' != 'None'">
+    <Compile Remove="Program.cs" />
+  </ItemGroup>
 </Project>

@@ -35,7 +35,10 @@
     </Style>
 
     <!-- ============ 导航分组标题（NavigationViewItemHeader 的紧凑样式） ============ -->
-    <Style x:Key="NavGroupHeaderStyle" TargetType="NavigationViewItemHeader">
+    <!-- 导航分组标题。TargetType 必须是 TextBlock —— 自建导航用 TextBlock 渲染分组名，
+         把 NavigationViewItemHeader 的样式套到 TextBlock 上会因类型不匹配触发
+         WinRT fail-fast（0xC000027B），应用直接崩溃。 -->
+    <Style x:Key="NavGroupHeaderStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="11" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />

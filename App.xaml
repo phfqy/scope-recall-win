@@ -4,18 +4,22 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Application.Resources>
         <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- WinUI 控件默认资源（generic.xaml 链）：
+                     缺少它时控件模板内部的 ThemeResource（如 TabViewButtonBackground）
+                     解析失败 → 视图加载抛 XamlParseException、NavigationView/Frame 直接 fail-fast -->
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+
+                <!-- 语义色 + 自定义控件样式（排在 XamlControlsResources 之后，可覆盖默认值） -->
+                <ResourceDictionary Source="Theme/ColorsAndBrushes.xaml" />
+                <ResourceDictionary Source="Theme/FluentControls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
             <!-- 明暗两套主题 token（Fluent 风格，参考 WinUI 3 Gallery / Files） -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Dark" Source="Theme/Dark.xaml" />
                 <ResourceDictionary x:Key="Light" Source="Theme/Light.xaml" />
             </ResourceDictionary.ThemeDictionaries>
-
-            <!-- 语义色（不随主题）：成功/警告/危险/信息 -->
-            <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="Theme/ColorsAndBrushes.xaml" />
-                <!-- 自定义控件样式：卡片/徽章/LED/表格等 -->
-                <ResourceDictionary Source="Theme/FluentControls.xaml" />
-            </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

@@ -4,97 +4,49 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="范围检索 · Scope Recall">
 
+    <!-- 布局：236px 左导航 + 内容区 + ⌘K 命令面板浮层。
+         导航用 Grid/StackPanel/Button 自建，而非 NavigationView ——
+         WinUI 3 的 NavigationView 在 unpackaged 形态（桌面 exe 安装版，
+         WindowsPackageType=None）下只要承载 Content 就 fail-fast（0xC000027B），
+         应用根本起不来。自建导航在 packaged / unpackaged 两种形态下行为一致。 -->
     <Grid x:Name="RootGrid" Background="{StaticResource WindowBackgroundBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="236" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-        <!-- 主导航：236px 左导航 + 5 组语义分组（18 视图）。
-             动画：页面切换用 SlideNavigationTransitionInfo（同级视图水平滑动），
-             参考 WinUI 3 Gallery 的导航体验与 MS Learn「Page transitions」。 -->
-        <NavigationView x:Name="NavView"
-                        PaneDisplayMode="Left"
-                        OpenPaneLength="236"
-                        CompactPaneLength="48"
-                        IsSettingsVisible="False"
-                        IsBackButtonVisible="Collapsed"
-                        IsPaneToggleButtonVisible="True"
-                        SelectionChanged="NavView_SelectionChanged">
+        <!-- 左导航 -->
+        <Grid Grid.Column="0" Padding="6,12,6,12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-            <NavigationView.MenuItems>
-                <!-- 总览与洞察 -->
-                <NavigationViewItemHeader Content="总览与洞察" Style="{StaticResource NavGroupHeaderStyle}" />
-                <NavigationViewItem x:Name="NavOverview" Content="总览" Tag="overview" ToolTipService.ToolTip="健康分 / 规模 / 缺口">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE80F;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="记忆" Tag="claims" ToolTipService.ToolTip="claim 全量 + 状态机">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8A5;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="时间线" Tag="timeline" ToolTipService.ToolTip="session/episode/capture 事件">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE823;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="查询" Tag="query" ToolTipService.ToolTip="recall / trace / entity">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE721;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="档案" Tag="profile" ToolTipService.ToolTip="profile 确定性分类视图">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE77B;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
+            <TextBlock Grid.Row="0"
+                       Text="范围检索 · Scope Recall"
+                       Style="{StaticResource NavGroupHeaderStyle}"
+                       Margin="10,2,10,10"
+                       TextWrapping="Wrap" />
 
-                <!-- 运行与诊断 -->
-                <NavigationViewItemHeader Content="运行与诊断" Style="{StaticResource NavGroupHeaderStyle}" />
-                <NavigationViewItem Content="队列" Tag="queue" ToolTipService.ToolTip="work_items + 失败重试">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8FD;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="诊断" Tag="doctor" ToolTipService.ToolTip="doctor 报告与能力缺口">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="运维" Tag="ops" ToolTipService.ToolTip="backup/adopt/migrate/respace">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE898;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="NavPanel" />
+            </ScrollViewer>
+        </Grid>
 
-                <!-- 操作与审计 -->
-                <NavigationViewItemHeader Content="操作与审计" Style="{StaticResource NavGroupHeaderStyle}" />
-                <NavigationViewItem Content="变更" Tag="mutate" ToolTipService.ToolTip="人工修改记忆（官方 mutate + 授权句）">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE70F;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="审计" Tag="audit" ToolTipService.ToolTip="record_event 时间线 + 订阅">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE81C;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="检索" Tag="search" ToolTipService.ToolTip="词法关键词检索">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE71C;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-
-                <!-- AI 与配置 -->
-                <NavigationViewItemHeader Content="AI 与配置" Style="{StaticResource NavGroupHeaderStyle}" />
-                <NavigationViewItem Content="AI 模型" Tag="ai-info" ToolTipService.ToolTip="worker 状态 / 今日统计">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE768;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="AI 改动" Tag="ai-changes" ToolTipService.ToolTip="candidate_lifecycle 留痕">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE895;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="AI 设置" Tag="ai-settings" ToolTipService.ToolTip="runtime-config 全量编辑器">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-
-                <!-- 维护与共享 -->
-                <NavigationViewItemHeader Content="维护与共享" Style="{StaticResource NavGroupHeaderStyle}" />
-                <NavigationViewItem Content="更新" Tag="update" ToolTipService.ToolTip="一键更新插件本体">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE777;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="安装" Tag="install" ToolTipService.ToolTip="plan/apply-install 向导">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8B7;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="共享存储" Tag="shared" ToolTipService.ToolTip="init-shared / attach / import-entry">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE716;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="设置" Tag="settings" ToolTipService.ToolTip="主题 / 巡检 / 开机自启">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-            </NavigationView.MenuItems>
-
-            <!-- 页面容器：Frame 承载 18 个视图，切换带滑动动画 -->
-            <Frame x:Name="ContentFrame" />
-        </NavigationView>
+        <!-- 页面容器：ContentControl 承载 18 个视图（Frame 在 unpackaged 下同样会崩） -->
+        <ContentControl x:Name="ContentHost"
+                        Grid.Column="1"
+                        HorizontalContentAlignment="Stretch"
+                        VerticalContentAlignment="Stretch">
+            <ContentControl.ContentTransitions>
+                <TransitionCollection>
+                    <EntranceThemeTransition FromHorizontalOffset="24" />
+                </TransitionCollection>
+            </ContentControl.ContentTransitions>
+        </ContentControl>
 
         <!-- ⌘K 命令面板浮层（Acrylic），Ctrl+K 唤起：P1 实现完整交互 -->
-        <Grid x:Name="PaletteOverlay" Visibility="Collapsed" Background="#33000000">
+        <Grid x:Name="PaletteOverlay" Grid.ColumnSpan="2" Visibility="Collapsed" Background="#33000000">
             <Grid MaxWidth="560" VerticalAlignment="Top" Margin="0,80,0,0">
                 <Border Background="{StaticResource AcrylicPanelBrush}" CornerRadius="8"
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
