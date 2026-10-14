@@ -100,6 +100,8 @@
                     <TextBox x:Name="TxtBucket" Header="Bucket（S3 兼容存储）" PlaceholderText="例如 scope-recall" />
                     <TextBox x:Name="TxtEndpoint" Header="Endpoint（S3 兼容存储）"
                              PlaceholderText="例如 https://你的账户ID.r2.cloudflarestorage.com" />
+                    <TextBox x:Name="TxtAccessKey" Header="Access Key ID（S3 兼容存储）"
+                             PlaceholderText="访问密钥 ID；它只是标识符，密钥请填在下面的口令框" />
 
                     <TextBox x:Name="TxtRoot" Header="云端目录（可选，留空表示根目录）" PlaceholderText="例如 scope-recall" />
 

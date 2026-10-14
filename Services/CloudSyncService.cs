@@ -33,6 +33,7 @@ public sealed record CloudSyncConfig(
     string? User,
     string? Bucket,
     string? Endpoint,
+    string? AccessKeyId,
     string Region,
     string Root,
     int IntervalSeconds,
@@ -41,7 +42,8 @@ public sealed record CloudSyncConfig(
 {
     public static CloudSyncConfig From(AppSettings s) => new(
         s.CloudSyncEnabled, s.CloudSyncBackend, s.CloudSyncUrl, s.CloudSyncUser,
-        s.CloudSyncBucket, s.CloudSyncEndpoint, s.CloudSyncRegion, s.CloudSyncRoot,
+        s.CloudSyncBucket, s.CloudSyncEndpoint, s.CloudSyncAccessKeyId,
+        s.CloudSyncRegion, s.CloudSyncRoot,
         s.CloudSyncIntervalSeconds, s.CloudSyncIncludeEvents, s.CloudSyncPythonPath);
 }
 
@@ -136,6 +138,7 @@ public sealed partial class CloudSyncService : ICloudSyncService
         s.CloudSyncUser = config.User;
         s.CloudSyncBucket = config.Bucket;
         s.CloudSyncEndpoint = config.Endpoint;
+        s.CloudSyncAccessKeyId = config.AccessKeyId;
         s.CloudSyncRegion = config.Region;
         s.CloudSyncRoot = config.Root;
         s.CloudSyncIntervalSeconds = config.IntervalSeconds;
@@ -491,42 +494,50 @@ public sealed partial class CloudSyncService : ICloudSyncService
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "ScopeRecallWin", "cloudsync-status.json");
 
-    /// <summary>从凭据管理器取出云端口令并转成环境变量。</summary>
+    /// <summary>
+    /// 组装子进程需要的云端凭据环境变量。
+    /// 口令（WebDAV 应用密码 / S3 Secret Access Key）从 Windows 凭据管理器取；
+    /// S3 的 Access Key ID 是标识符，直接取自配置（见 AppSettings.CloudSyncAccessKeyId）。
+    /// </summary>
     internal async Task<Dictionary<string, string>> BuildSecretEnvironmentAsync(CloudSyncConfig config)
     {
         var env = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (_credentials is null)
-        {
-            return env;
-        }
 
         if (string.Equals(config.Backend, "webdav", StringComparison.OrdinalIgnoreCase))
         {
-            var account = config.User ?? "";
-            var pwd = await _credentials.GetAsync(CredentialServiceName, account).ConfigureAwait(false);
-            if (!string.IsNullOrEmpty(pwd))
+            if (_credentials is not null)
             {
-                env["SR_CLOUD_PWD"] = pwd;
+                var account = config.User ?? "";
+                var pwd = await _credentials.GetAsync(CredentialServiceName, account).ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(pwd))
+                {
+                    env["SR_CLOUD_PWD"] = pwd;
+                }
             }
         }
         else if (string.Equals(config.Backend, "s3", StringComparison.OrdinalIgnoreCase))
         {
-            var access = await _credentials.GetAsync(CredentialServiceName, "s3-access-key").ConfigureAwait(false);
-            var secret = await _credentials.GetAsync(CredentialServiceName, "s3-secret-key").ConfigureAwait(false);
-            if (!string.IsNullOrEmpty(access))
+            // Access Key ID 来自配置（非敏感标识符）；此前只从凭据管理器读，
+            // 而没有任何地方写入过它 → S3 永远拿不到 access key。
+            if (!string.IsNullOrWhiteSpace(config.AccessKeyId))
             {
-                env["S3_ACCESS_KEY"] = access;
+                env["S3_ACCESS_KEY"] = config.AccessKeyId;
             }
-            if (!string.IsNullOrEmpty(secret))
+            if (_credentials is not null)
             {
-                env["S3_SECRET_KEY"] = secret;
+                var secret = await _credentials.GetAsync(CredentialServiceName, "s3-secret-key").ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(secret))
+                {
+                    env["S3_SECRET_KEY"] = secret;
+                }
             }
         }
         return env;
     }
 
     public CloudSyncRound? ReadLastStatus(string memoryRoot)
-    {        var path = StatusPath(memoryRoot);
+    {
+        var path = StatusPath(memoryRoot);
         if (!File.Exists(path))
         {
             return null;

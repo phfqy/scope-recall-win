@@ -74,6 +74,7 @@ public sealed partial class CloudSyncView : UserControl
         TxtUser.Text = c.User ?? "";
         TxtBucket.Text = c.Bucket ?? "";
         TxtEndpoint.Text = c.Endpoint ?? "";
+        TxtAccessKey.Text = c.AccessKeyId ?? "";
         TxtRoot.Text = c.Root ?? "";
         NumInterval.Value = c.IntervalSeconds < 60 ? 60 : c.IntervalSeconds;
         ChkIncludeEvents.IsChecked = c.IncludeEvents;
@@ -93,6 +94,7 @@ public sealed partial class CloudSyncView : UserControl
         PwdSecret.Visibility = isWebdav || isS3 ? Visibility.Visible : Visibility.Collapsed;
         TxtBucket.Visibility = isS3 ? Visibility.Visible : Visibility.Collapsed;
         TxtEndpoint.Visibility = isS3 ? Visibility.Visible : Visibility.Collapsed;
+        TxtAccessKey.Visibility = isS3 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private CloudSyncConfig ReadForm() => new(
@@ -102,6 +104,7 @@ public sealed partial class CloudSyncView : UserControl
         User: NullIfBlank(TxtUser.Text),
         Bucket: NullIfBlank(TxtBucket.Text),
         Endpoint: NullIfBlank(TxtEndpoint.Text),
+        AccessKeyId: NullIfBlank(TxtAccessKey.Text),
         Region: "auto",
         Root: TxtRoot.Text?.Trim() ?? "",
         IntervalSeconds: (int)Math.Max(60, NumInterval.Value),

@@ -52,6 +52,13 @@ public sealed class AppSettings
     /// <summary>S3 endpoint（backend=s3 时使用）。</summary>
     public string? CloudSyncEndpoint { get; set; }
 
+    /// <summary>
+    /// S3 Access Key ID（backend=s3 时使用）。
+    /// 放这里而不是凭据管理器：它是**标识符**不是密钥，需要非敏感地参与配置；
+    /// 真正敏感的 Secret Access Key 仍只进 Windows 凭据管理器。
+    /// </summary>
+    public string? CloudSyncAccessKeyId { get; set; }
+
     /// <summary>S3 区域；兼容 S3 服务通常填 auto。</summary>
     public string CloudSyncRegion { get; set; } = "auto";
 
