@@ -14,7 +14,7 @@
   按 `state.json` 协调账本**逐条只传变化**，带 SHA256 完整性校验与空库保护。
 - 🤖 **远端接入**：远端 agent 读写云端记忆 —— `remote/sr_cloud_remote.py`（CLI）是**唯一核心实现**，
   MCP Server 与 SKILL 是它的两种接入形式（MCP 只是 import 复用同一批命令函数，SKILL 是纯说明书）。
-  写入经云桥转官方 `propose_memory` 落库，控制台按 `origin_agent` 显示「谁在连」。
+  写入经云桥转官方 `propose_memory` 落库。
 
 > 三者共用**同一份云端账本**：`state.json` + `records/<sha1(ref)>.json`（协议 `scope-recall.incremental-sync/1`）。
 > 选型判据：客户端原生支持 MCP → 用 MCP（工具签名有 schema，调用更规范）；否则 → 用 CLI
@@ -50,8 +50,7 @@
 
 - **总览**：健康分 + 待确认候选按原因明细；**记忆 / 时间线 / 检索 / 档案（关系图）**；
   **队列**（失败原因 + 一键重试）/ **候选记录** / **审计**。
-- **云同步页**：环境自检（mcp/webdav4/boto3）、专用 venv 选择、备份并同步一轮、
-  **远端 agent 链接状态**（读云端账本按 `origin_agent` 聚合）。
+- **云同步页**：环境自检（mcp/webdav4/boto3）、专用 venv 选择、备份并同步一轮。
 - **写通道全部走官方 CLI**（参数装配收口在 `Infrastructure/MaintenanceCli.cs`，静态检查 V8 拦截手写）：
   共享库 attach/detach、备份与回滚（先备份 → 预演 → 执行）、候选重评、失败重试、
   向量重建、**插件升级全流程**（检查 → 备份 → 下载 → 全栈清场 → 换包 → doctor 校验）。
@@ -66,7 +65,6 @@
 | `incremental_sync.py` | 真实库（schema 1110）只读提取 + 逐条增量上云 + 冲突记录不静默覆盖 |
 | `sync_engine.py` | 三后端抽象（local / webdav / s3）+ 状态文件协议 |
 | `bridge_plugin.py` | 单机形态的独立云桥（官方 MCP 读写 + 双向同步） |
-| `remote_status.py` | 远端链接状态只读探针（按 `origin_agent` 聚合，供控制台调用） |
 
 **流量特性**：无变化时上传 0 字节；改 1 条只传该条（实测 17 字节，全量 582KB）。
 
@@ -142,7 +140,6 @@ scope-recall-win/
 │   ├── incremental_sync.py      # 真实库增量同步引擎
 │   ├── sync_engine.py           # 三后端抽象
 │   ├── bridge_plugin.py         # 单机形态云桥
-│   └── remote_status.py         # 远端链接状态探针
 ├── remote/                      # 远端 agent 接入（Python）
 │   ├── sr_cloud_remote.py       # CLI（7 命令，零依赖）
 │   ├── memory_mcp.py            # MCP Server（7 工具）

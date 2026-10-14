@@ -4,13 +4,12 @@
 为什么不是 Notion 交付包那一份：
   交付包的 memory_mcp.py 走**整文件 LWW**（云端 memory.sqlite3 + memory.jsonl），
   与本机增量桥的云端账本（state.json + records/<sha1>.json）**不是同一批对象**。
-  后果很实际：远端经 MCP 写的东西，控制台的「远端 agent 链接状态」看不见
-  （它按 origin_agent 扫账本），home 桥也拉不到（它只读账本）。
+  后果很实际：远端经 MCP 写的东西，home 桥拉不到（它只读同一份账本），
+  远端写入因此永远进不了共享库。
   本文件改为**直接读写同一份云端账本**，因此：
 
       MCP 写  ┐
       CLI 写  ┴─► 同一个 state.json + records/ ─► home 桥 propose_memory ─► 共享库
-                                              └─► remote_status.py（控制台链接状态）
 
   即 MCP 与 CLI/skill 是**同一能力的两个入口**，任选其一，效果等价。
 
