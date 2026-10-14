@@ -77,7 +77,8 @@
 
                     <TextBlock x:Name="TxtPython" Style="{StaticResource MonoTextStyle}" TextWrapping="Wrap" />
                     <TextBlock x:Name="TxtPreflight" TextWrapping="Wrap" FontSize="12.5"
-                               Foreground="{StaticResource MutedTextBrush}" />
+                               Foreground="{StaticResource MutedTextBrush}"
+                               Text="点「开始自检」检查解释器、桥脚本与依赖是否齐备。" />
                 </StackPanel>
             </Border>
 

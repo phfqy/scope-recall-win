@@ -139,31 +139,52 @@ public sealed partial class CloudSyncView : UserControl
     private void BtnPreflight_Click(object sender, RoutedEventArgs e)
         => UiThread.Run(DispatcherQueue, "CloudSyncView.Preflight", async () =>
         {
-            var root = PathDiscovery.FindMemoryRoot(App.Settings);
-            if (root is null)
+            // 自检结果必须写回「环境自检」卡片里的 TxtPreflight ——
+            // 之前误写成 SetConfigState（那是「云端存储」卡片底部的提示），
+            // 结果文字出现在下面很远的卡片里，点按钮看起来像「没有效果」。
+            SetPreflightState("正在自检…", "pending");
+            BtnPreflight.IsEnabled = false;
+            try
             {
-                SetConfigState("未找到记忆库根目录，请先到「安装」页完成部署。", "failed");
-                return;
-            }
-            if (_sync is null)
-            {
-                return;
-            }
+                var root = PathDiscovery.FindMemoryRoot(App.Settings);
+                if (root is null)
+                {
+                    SetPreflightState("✗ 未找到记忆库根目录。请先到「安装」页选择部署目录并完成部署。", "failed");
+                    return;
+                }
+                if (_sync is null)
+                {
+                    SetPreflightState("✗ 云同步服务未注册（应用启动异常），请重启应用。", "failed");
+                    return;
+                }
 
-            SetConfigState("正在自检…", "pending");
-            var result = await _sync.PreflightAsync(root);
-            TxtPython.Text = result.PythonPath is null
-                ? "未找到 Python 解释器"
-                : $"解释器：{result.PythonPath}" +
-                  (string.IsNullOrEmpty(result.PythonVersion) ? "" : $"（{result.PythonVersion}）");
+                var result = await _sync.PreflightAsync(root);
 
-            if (result.Ready)
-            {
-                SetConfigState("✓ 环境就绪：解释器、桥脚本与依赖均可用。", "ok");
+                TxtPython.Text = result.PythonPath is null
+                    ? "未找到 Python 解释器"
+                    : $"解释器：{result.PythonPath}" +
+                      (string.IsNullOrEmpty(result.PythonVersion) ? "" : $"（{result.PythonVersion}）");
+
+                if (result.Ready)
+                {
+                    var script = result.BridgeScript ?? "（随应用分发）";
+                    SetPreflightState($"✓ 环境就绪：解释器、桥脚本与依赖均可用。\n桥脚本：{script}", "ok");
+                }
+                else
+                {
+                    SetPreflightState("✗ " + (result.Message ?? "环境不满足云同步要求。"), "failed");
+                }
             }
-            else
+            catch (Exception ex)
             {
-                SetConfigState("✗ " + (result.Message ?? "环境不满足云同步要求。"), "failed");
+                // 自检异常必须在「环境自检」卡片内可见；不能只写 crash.log，
+                // 否则用户体感仍是“按钮点了没反应”。
+                SetPreflightState($"✗ 自检异常：{ex.Message}", "failed");
+                App.LogCrash("CloudSyncView.Preflight", ex);
+            }
+            finally
+            {
+                BtnPreflight.IsEnabled = true;
             }
         });
 
@@ -184,7 +205,8 @@ public sealed partial class CloudSyncView : UserControl
             var config = ReadForm() with { PythonPath = file.Path };
             _sync.SaveConfig(config);
             TxtPython.Text = $"解释器：{file.Path}";
-            SetConfigState("✓ 已切换 Python 解释器，建议重新自检。", "ok");
+            // 与自检同属「环境自检」卡片，反馈也写这张卡片
+            SetPreflightState("✓ 已切换 Python 解释器，建议重新自检。", "ok");
         });
 
     // ---------- 连接测试 ----------
@@ -410,6 +432,13 @@ public sealed partial class CloudSyncView : UserControl
     {
         TxtConfigState.Text = message;
         TxtConfigState.Foreground = StatusVisuals.BrushOf(state);
+    }
+
+    /// <summary>「环境自检」卡片自己的结果行（与「云端存储」卡片的提示分开，避免反馈错位）。</summary>
+    private void SetPreflightState(string message, string state)
+    {
+        TxtPreflight.Text = message;
+        TxtPreflight.Foreground = StatusVisuals.BrushOf(state);
     }
 
     private void SetSyncState(string message, string state)

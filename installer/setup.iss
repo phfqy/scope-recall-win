@@ -18,7 +18,7 @@
 
 #define MyAppName "Scope Recall"
 #define MyAppNameZh "范围检索 · Scope Recall"
-#define MyAppVersion "1.3.3"
+#define MyAppVersion "1.3.4"
 #define MyAppExeName "ScopeRecallWin.exe"
 #define MyAppPublisher "phfqy"
 #define MyAppURL "https://github.com/phfqy/scope-recall-win"
@@ -35,7 +35,7 @@ DefaultDirName={localappdata}\Programs\ScopeRecallWin
 PrivilegesRequired=lowest
 DisableProgramGroupPage=yes
 OutputDir=out
-OutputBaseFilename=ScopeRecallWin-Setup-1.3.3
+OutputBaseFilename=ScopeRecallWin-Setup-1.3.4
 SetupIconFile=app.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/max
