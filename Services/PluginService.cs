@@ -532,14 +532,17 @@ public sealed class PluginService : IPluginService
 
         // 3) download
         Report(3, "download", "running", "下载 wheel 并校验 sha256");
-        var wheelPath = Path.Combine(workDir, $"hermes_scope_recall-{check.LatestVersion}-py3-none-any.whl");
-        var dlError = await DownloadWheelAsync(check.WheelUrl, check.WheelSha256, wheelPath, ct).ConfigureAwait(false);
+        var wheelTarget = Path.Combine(workDir, $"hermes_scope_recall-{check.LatestVersion}-py3-none-any.whl");
+        var (dlError, wheelPath) = await DownloadWheelAsync(check.WheelUrl, check.WheelSha256, wheelTarget, ct).ConfigureAwait(false);
         if (dlError is not null)
         {
             Report(3, "download", "failed", dlError);
             return new PluginUpgradeResult(false, from, null, log, dlError);
         }
-        Report(3, "download", "done", wheelPath);
+        Report(3, "download", "done",
+            string.Equals(wheelPath, wheelTarget, StringComparison.OrdinalIgnoreCase)
+                ? wheelPath
+                : $"{wheelPath}（目标文件被占用，已改用临时文件继续）");
 
         // 4) quiesce：停全部 entry 的 resident
         Report(4, "quiesce", "running", "暂停 resident 服务");
@@ -686,9 +689,16 @@ public sealed class PluginService : IPluginService
         return "警告：当前用户对 shared\\ 不可写。若 Agent 以其他 Windows 账户运行，请以管理员身份为该账户授予读写权限后重试。";
     }
 
-    private static async Task<string?> DownloadWheelAsync(
+    /// <summary>
+    /// 下载 wheel 到 <paramref name="target"/>，返回（错误, 实际可用的 wheel 路径）。
+    /// 先落到唯一临时文件（*.part）再校验 sha256、最后换名 —— 修复「目标文件正被另一进程使用」
+    /// （杀毒软件扫描刚下载的文件 / 上次尝试残留句柄，实测 PyPI 通道复现）导致整个升级中止的问题：
+    /// 换名重试仍失败时，直接改用临时文件继续升级（内容已校验一致，不必中止）。
+    /// </summary>
+    private static async Task<(string? Error, string WheelPath)> DownloadWheelAsync(
         string url, string? expectedSha256, string target, CancellationToken ct)
     {
+        var part = target + "." + Guid.NewGuid().ToString("N") + ".part";
         try
         {
             var req = new HttpRequestMessage(HttpMethod.Get, url);
@@ -696,23 +706,58 @@ public sealed class PluginService : IPluginService
             using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
             resp.EnsureSuccessStatusCode();
             await using var source = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            await using var file = File.Create(target);
-            await source.CopyToAsync(file, ct).ConfigureAwait(false);
+            await using (var file = File.Create(part))
+            {
+                await source.CopyToAsync(file, ct).ConfigureAwait(false);
+            }
 
             if (!string.IsNullOrEmpty(expectedSha256))
             {
-                var actual = UpdateService.ComputeSha256(target);
+                var actual = UpdateService.ComputeSha256(part);
                 if (!string.Equals(actual, expectedSha256, StringComparison.OrdinalIgnoreCase))
                 {
-                    File.Delete(target);
-                    return $"wheel SHA256 校验失败（期望 {expectedSha256}，实际 {actual}）";
+                    TryDelete(part);
+                    return ($"wheel SHA256 校验失败（期望 {expectedSha256}，实际 {actual}）", target);
                 }
             }
-            return null;
+
+            // 目标文件可能被杀毒软件/残留句柄短暂占用：换名重试几次
+            for (var attempt = 1; attempt <= 5; attempt++)
+            {
+                try
+                {
+                    File.Move(part, target, overwrite: true);
+                    return (null, target);
+                }
+                catch (Exception ex) when (attempt < 5 && ex is IOException or UnauthorizedAccessException)
+                {
+                    await Task.Delay(250 * attempt, ct).ConfigureAwait(false);
+                }
+                catch (Exception) when (attempt == 5)
+                {
+                    // 目标被长期占用：改用已校验的临时文件继续升级
+                    return (null, part);
+                }
+            }
+            return (null, part);
         }
         catch (Exception ex)
         {
-            return ex.Message;
+            TryDelete(part);
+            return (ex.Message, target);
+        }
+    }
+
+    /// <summary>删除文件，被占用/不存在时静默忽略（仅用于清理临时产物）。</summary>
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch
+        {
+            // 清理失败不影响主流程
         }
     }
 
