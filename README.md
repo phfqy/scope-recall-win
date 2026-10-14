@@ -12,10 +12,13 @@
   WinUI 3（Windows App SDK）+ C#/XAML，Fluent 明暗双主题 + Mica，unpackaged 免管理员安装。
 - ☁️ **云桥**：把共享记忆增量同步到云端（坚果云 WebDAV / S3 兼容），
   按 `state.json` 协调账本**逐条只传变化**，带 SHA256 完整性校验与空库保护。
-- 🤖 **远端接入**：远端 agent 通过 **CLI / MCP / SKILL** 三个入口读写云端记忆，
+- 🤖 **远端接入**：远端 agent 读写云端记忆 —— `remote/sr_cloud_remote.py`（CLI）是**唯一核心实现**，
+  MCP Server 与 SKILL 是它的两种接入形式（MCP 只是 import 复用同一批命令函数，SKILL 是纯说明书）。
   写入经云桥转官方 `propose_memory` 落库，控制台按 `origin_agent` 显示「谁在连」。
 
 > 三者共用**同一份云端账本**：`state.json` + `records/<sha1(ref)>.json`（协议 `scope-recall.incremental-sync/1`）。
+> 选型判据：客户端原生支持 MCP → 用 MCP（工具签名有 schema，调用更规范）；否则 → 用 CLI
+> （唯一选择，且 local 后端零第三方依赖）。MCP 底层就是调 CLI，二者共享同一份代码与账本。
 
 ## 架构
 
