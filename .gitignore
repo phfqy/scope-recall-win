@@ -54,3 +54,8 @@ $RECYCLE.BIN/
 
 # 本地备份文件（不参与构建）
 *.bak-*
+
+## Python（bridge/ 与 remote/ 下的同步桥与远端入口脚本）
+__pycache__/
+*.py[cod]
+*.egg-info/
