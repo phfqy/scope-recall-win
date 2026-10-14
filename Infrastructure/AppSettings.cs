@@ -31,9 +31,8 @@ public sealed class AppSettings
     public string Theme { get; set; } = "system";
 
     // ---------- 云同步（记忆云同步桥）----------
-    // 注意：本组设置**只放非敏感项**。云端口令一律走 Windows 凭据管理器
-    // （Services/CredentialService，Target 形如 ScopeRecall:cloudsync:<account>），
-    // 绝不写入 settings.json、日志或调用台账。
+    // 本组设置只放非敏感项。云端口令一律走 Windows 凭据管理器
+    // （Services/CredentialService），绝不写入 settings.json、日志或命令行参数。
 
     /// <summary>云同步总开关。默认关闭：未显式开启前不启动桥、不触碰云端。</summary>
     public bool CloudSyncEnabled { get; set; }
@@ -53,19 +52,23 @@ public sealed class AppSettings
     /// <summary>S3 endpoint（backend=s3 时使用）。</summary>
     public string? CloudSyncEndpoint { get; set; }
 
+    /// <summary>
+    /// S3 Access Key ID（backend=s3 时使用）。
+    /// 放这里而不是凭据管理器：它是**标识符**不是密钥，需要非敏感地参与配置；
+    /// 真正敏感的 Secret Access Key 仍只进 Windows 凭据管理器。
+    /// </summary>
+    public string? CloudSyncAccessKeyId { get; set; }
+
     /// <summary>S3 区域；兼容 S3 服务通常填 auto。</summary>
     public string CloudSyncRegion { get; set; } = "auto";
 
     /// <summary>云端根路径/前缀（云端目录下的子路径）。</summary>
     public string CloudSyncRoot { get; set; } = "";
 
-    /// <summary>
-    /// 同步轮询间隔（秒）。坚果云免费版对高频请求会返回 503（全局限流，PROPFIND 也被挡），
-    /// 实测建议不低于 60 秒；界面会阻止更小的值。
-    /// </summary>
+    /// <summary>同步轮询间隔（秒）。坚果云免费版对高频请求返回 503，建议不低于 60 秒。</summary>
     public int CloudSyncIntervalSeconds { get; set; } = 60;
 
-    /// <summary>是否上传原始事件正文（source_events.content）。关闭则只同步 claims，隐私更干净。</summary>
+    /// <summary>是否上传原始事件正文。关闭则只同步 claims，隐私更干净。</summary>
     public bool CloudSyncIncludeEvents { get; set; } = true;
 
     /// <summary>桥与增量引擎使用的专用 Python 解释器（独立 venv，不污染插件 venv）。</summary>

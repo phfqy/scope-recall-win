@@ -51,3 +51,6 @@ $RECYCLE.BIN/
 .idea/
 *.swp
 *~
+
+## 安装包输出（本机构建产物，不进 git）
+installer/out/

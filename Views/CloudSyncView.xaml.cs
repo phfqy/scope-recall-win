@@ -74,6 +74,7 @@ public sealed partial class CloudSyncView : UserControl
         TxtUser.Text = c.User ?? "";
         TxtBucket.Text = c.Bucket ?? "";
         TxtEndpoint.Text = c.Endpoint ?? "";
+        TxtAccessKey.Text = c.AccessKeyId ?? "";
         TxtRoot.Text = c.Root ?? "";
         NumInterval.Value = c.IntervalSeconds < 60 ? 60 : c.IntervalSeconds;
         ChkIncludeEvents.IsChecked = c.IncludeEvents;
@@ -93,6 +94,7 @@ public sealed partial class CloudSyncView : UserControl
         PwdSecret.Visibility = isWebdav || isS3 ? Visibility.Visible : Visibility.Collapsed;
         TxtBucket.Visibility = isS3 ? Visibility.Visible : Visibility.Collapsed;
         TxtEndpoint.Visibility = isS3 ? Visibility.Visible : Visibility.Collapsed;
+        TxtAccessKey.Visibility = isS3 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private CloudSyncConfig ReadForm() => new(
@@ -102,6 +104,7 @@ public sealed partial class CloudSyncView : UserControl
         User: NullIfBlank(TxtUser.Text),
         Bucket: NullIfBlank(TxtBucket.Text),
         Endpoint: NullIfBlank(TxtEndpoint.Text),
+        AccessKeyId: NullIfBlank(TxtAccessKey.Text),
         Region: "auto",
         Root: TxtRoot.Text?.Trim() ?? "",
         IntervalSeconds: (int)Math.Max(60, NumInterval.Value),
@@ -139,31 +142,52 @@ public sealed partial class CloudSyncView : UserControl
     private void BtnPreflight_Click(object sender, RoutedEventArgs e)
         => UiThread.Run(DispatcherQueue, "CloudSyncView.Preflight", async () =>
         {
-            var root = PathDiscovery.FindMemoryRoot(App.Settings);
-            if (root is null)
+            // 自检结果必须写回「环境自检」卡片里的 TxtPreflight ——
+            // 之前误写成 SetConfigState（那是「云端存储」卡片底部的提示），
+            // 结果文字出现在下面很远的卡片里，点按钮看起来像「没有效果」。
+            SetPreflightState("正在自检…", "pending");
+            BtnPreflight.IsEnabled = false;
+            try
             {
-                SetConfigState("未找到记忆库根目录，请先到「安装」页完成部署。", "failed");
-                return;
-            }
-            if (_sync is null)
-            {
-                return;
-            }
+                var root = PathDiscovery.FindMemoryRoot(App.Settings);
+                if (root is null)
+                {
+                    SetPreflightState("✗ 未找到记忆库根目录。请先到「安装」页选择部署目录并完成部署。", "failed");
+                    return;
+                }
+                if (_sync is null)
+                {
+                    SetPreflightState("✗ 云同步服务未注册（应用启动异常），请重启应用。", "failed");
+                    return;
+                }
 
-            SetConfigState("正在自检…", "pending");
-            var result = await _sync.PreflightAsync(root);
-            TxtPython.Text = result.PythonPath is null
-                ? "未找到 Python 解释器"
-                : $"解释器：{result.PythonPath}" +
-                  (string.IsNullOrEmpty(result.PythonVersion) ? "" : $"（{result.PythonVersion}）");
+                var result = await _sync.PreflightAsync(root);
 
-            if (result.Ready)
-            {
-                SetConfigState("✓ 环境就绪：解释器、桥脚本与依赖均可用。", "ok");
+                TxtPython.Text = result.PythonPath is null
+                    ? "未找到 Python 解释器"
+                    : $"解释器：{result.PythonPath}" +
+                      (string.IsNullOrEmpty(result.PythonVersion) ? "" : $"（{result.PythonVersion}）");
+
+                if (result.Ready)
+                {
+                    var script = result.BridgeScript ?? "（随应用分发）";
+                    SetPreflightState($"✓ 环境就绪：解释器、桥脚本与依赖均可用。\n桥脚本：{script}", "ok");
+                }
+                else
+                {
+                    SetPreflightState("✗ " + (result.Message ?? "环境不满足云同步要求。"), "failed");
+                }
             }
-            else
+            catch (Exception ex)
             {
-                SetConfigState("✗ " + (result.Message ?? "环境不满足云同步要求。"), "failed");
+                // 自检异常必须在「环境自检」卡片内可见；不能只写 crash.log，
+                // 否则用户体感仍是“按钮点了没反应”。
+                SetPreflightState($"✗ 自检异常：{ex.Message}", "failed");
+                App.LogCrash("CloudSyncView.Preflight", ex);
+            }
+            finally
+            {
+                BtnPreflight.IsEnabled = true;
             }
         });
 
@@ -184,7 +208,8 @@ public sealed partial class CloudSyncView : UserControl
             var config = ReadForm() with { PythonPath = file.Path };
             _sync.SaveConfig(config);
             TxtPython.Text = $"解释器：{file.Path}";
-            SetConfigState("✓ 已切换 Python 解释器，建议重新自检。", "ok");
+            // 与自检同属「环境自检」卡片，反馈也写这张卡片
+            SetPreflightState("✓ 已切换 Python 解释器，建议重新自检。", "ok");
         });
 
     // ---------- 连接测试 ----------
@@ -410,6 +435,119 @@ public sealed partial class CloudSyncView : UserControl
     {
         TxtConfigState.Text = message;
         TxtConfigState.Foreground = StatusVisuals.BrushOf(state);
+    }
+
+    /// <summary>「环境自检」卡片自己的结果行（与「云端存储」卡片的提示分开，避免反馈错位）。</summary>
+    private void SetPreflightState(string message, string state)
+    {
+        TxtPreflight.Text = message;
+        TxtPreflight.Foreground = StatusVisuals.BrushOf(state);
+    }
+
+    private void BtnRemoteRefresh_Click(object sender, RoutedEventArgs e)
+        => UiThread.Run(DispatcherQueue, "CloudSyncView.RemoteRefresh", LoadRemoteAsync);
+
+    /// <summary>
+    /// 「远端 agent 链接状态」卡片：只读探针读云端账本，按 origin_agent 聚合
+    /// （远端 CLI/SKILL sr_cloud_remote propose 打标；本机主桥的记录归为 home）。
+    /// </summary>
+    private async Task LoadRemoteAsync()
+    {
+        if (_sync is null)
+        {
+            return;
+        }
+        var root = PathDiscovery.FindMemoryRoot(App.Settings);
+        if (root is null)
+        {
+            SetRemoteState("未找到记忆库根目录，请先到「安装」页完成部署。", "failed");
+            return;
+        }
+
+        BtnRemoteRefresh.IsEnabled = false;
+        RemoteLed.Background = StatusVisuals.BrushOf("pending");
+        TxtRemoteState.Text = "正在读取云端账本（只读探针，最多 3 分钟）…";
+        TxtRemote.Text = "";
+        try
+        {
+            var status = await _sync.GetRemoteLinkStatusAsync(root);
+            if (status is null)
+            {
+                SetRemoteState("云同步服务不可用。", "failed");
+                return;
+            }
+            if (!status.Reachable)
+            {
+                SetRemoteState("✗ 无法读取云端账本：" + (status.Error ?? "未知原因"), "failed");
+                return;
+            }
+
+            SetRemoteState(
+                $"✓ 云端账本可达：{status.TotalRecords} 条记录（claims {status.Claims} · events {status.Events}）" +
+                (status.LastUpdateHuman is { } ago ? $"，最近更新 {ago}" : "") +
+                (status.Sampled ? $"（写入者统计取最近 {status.SampleSize} 条样本）" : "") +
+                (status.Fallback ? "（state.json 缺失，已按 records/ 扫描重建——请让 home 端跑一轮同步补账本）" : ""),
+                "ok");
+
+            var lines = new List<string>();
+            foreach (var w in status.Writers)
+            {
+                lines.Add($"• {w.Agent}：{w.Records} 条（claims {w.Claims} · events {w.Events}）" +
+                          (w.LastUpdateIso is null ? "" : $"，最近 {FormatAgo(w.LastUpdateTs)}"));
+            }
+            var last = status.LastRound;
+            if (last is not null)
+            {
+                lines.Add($"主桥上一轮：{(last.Ok ? "成功" : last.Partial ? "部分完成" : "失败")}" +
+                          $"（推 {last.Pushed} / 拉 {last.Pulled} / 写入库 {last.WrittenToStore}，{last.WrittenAt}）");
+            }
+            if (status.Writers.Count == 0)
+            {
+                lines.Add("（账本里还没有可识别的写入者）");
+            }
+
+            // 远端写入不会自动落库：本机云桥必须跑一轮才会把远端记录转写进共享库，
+            // 这里直接把「下一步该点哪儿」写出来，省得用户对着状态干看。
+            var remoteWriters = status.Writers
+                .Where(w => !w.Agent.StartsWith("home", StringComparison.Ordinal)).ToList();
+            if (remoteWriters.Count > 0)
+            {
+                lines.Add($"→ 发现 {remoteWriters.Count} 个远端写入者，其记录要经本机云桥转写才进共享库：" +
+                          "点上方「备份并同步一轮」拉取。");
+            }
+
+            // 接入指引：三个入口读写的是同一份云端账本；完整配置见仓库 docs/远端接入.md
+            lines.Add("远端接入（三选一，读写同一份云端账本）：");
+            lines.Add("  · CLI   sr_cloud_remote.py propose|recall|revise|forget（零依赖，推荐）");
+            lines.Add("  · MCP   memory_mcp.py 注册为 stdio server（7 工具，需 mcp>=2.0）");
+            lines.Add("  · SKILL 把 skill 目录装进 agent 的 skills，agent 会按描述自动调用");
+            TxtRemote.Text = string.Join("\n", lines);
+        }
+        catch (Exception ex)
+        {
+            SetRemoteState($"✗ 检查异常：{ex.Message}", "failed");
+            App.LogCrash("CloudSyncView.RemoteRefresh", ex);
+        }
+        finally
+        {
+            BtnRemoteRefresh.IsEnabled = true;
+        }
+    }
+
+    private static string FormatAgo(double unixTs)
+    {
+        var span = DateTimeOffset.Now - DateTimeOffset.FromUnixTimeSeconds((long)unixTs);
+        return span.TotalMinutes < 1 ? "刚刚"
+            : span.TotalHours < 1 ? $"{(int)span.TotalMinutes} 分钟前"
+            : span.TotalDays < 1 ? $"{(int)span.TotalHours} 小时前"
+            : $"{(int)span.TotalDays} 天前";
+    }
+
+    private void SetRemoteState(string message, string state)
+    {
+        TxtRemoteState.Text = message;
+        TxtRemoteState.Foreground = StatusVisuals.BrushOf(state);
+        RemoteLed.Background = StatusVisuals.BrushOf(state);
     }
 
     private void SetSyncState(string message, string state)

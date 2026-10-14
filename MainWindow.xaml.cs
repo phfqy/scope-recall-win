@@ -14,7 +14,7 @@ namespace ScopeRecallWin;
 
 public sealed partial class MainWindow : Window
 {
-    /// <summary>路由 Tag → 视图类型（19 个视图：原 18 个 + 云同步）。</summary>
+    /// <summary>路由 Tag → 视图类型（18 个视图，对应提示词包 P1）。</summary>
     private static readonly Dictionary<string, Type> Views = new()
     {
         ["overview"]    = typeof(Views.OverviewView),
@@ -73,16 +73,13 @@ public sealed partial class MainWindow : Window
         }),
         ("维护与共享", new[]
         {
-            ("update",     "更新", "\uE777", "软件与插件版本"),
-            ("install",    "安装", "\uE7B8", "部署目录与首次安装"),
+            ("update",   "更新", "\uE777", "软件与插件版本"),
+            ("install",  "安装", "\uE7B8", "部署目录与首次安装"),
             ("shared",     "共享存储", "\uE716", "已接入的助手成员管理"),
             ("cloudsync",  "云同步", "\uE753", "把本机记忆同步到云端供远端助手使用"),
             ("settings",   "设置", "\uE713", "外观 / 更新 / 开机自启"),
         }),
     };
-
-    /// <summary>命令面板条目（⌘K 数据源）。</summary>
-    private sealed record PaletteItem(string Tag, string Label, string Tip, string Group);
 
     /// <summary>单个导航按钮的各可视部件（选中态切换用）。</summary>
     private sealed class NavButtonParts
@@ -95,7 +92,7 @@ public sealed partial class MainWindow : Window
 
     private readonly Dictionary<string, NavButtonParts> _navButtons = new();
     private readonly Dictionary<Type, UIElement> _viewCache = new();
-    private readonly List<PaletteItem> _paletteItems = new();
+    private readonly List<QuickSearchItem> _paletteItems = new();
     private NavButtonParts? _activeParts;
 
     public MainWindow()
@@ -129,13 +126,13 @@ public sealed partial class MainWindow : Window
         }
         App.Trace($"MainWindow: after NavigateTo({startTag})");
 
-        // ⌘K 键盘加速器：Ctrl+K 唤起命令面板
+        // ⌘K / Ctrl+T 键盘加速器：呼出快速搜索浮层（页面 + 设置项 + 记忆检索）
         var accelerator = new KeyboardAccelerator
         {
             Key = VirtualKey.K,
             Modifiers = VirtualKeyModifiers.Control,
         };
-        accelerator.Invoked += (_, _) => TogglePalette();
+        accelerator.Invoked += (_, _) => ToggleQuickSearch();
         RootGrid.KeyboardAccelerators.Add(accelerator);
 
         // Ctrl+F：呼出顶栏全局搜索框并聚焦（搜索栏默认收起）
@@ -151,21 +148,15 @@ public sealed partial class MainWindow : Window
         };
         RootGrid.KeyboardAccelerators.Add(focusSearch);
 
-        // Ctrl+T：呼出 / 收起顶栏全局搜索（呼出时自动聚焦输入框）
+        // Ctrl+T：呼出 / 收起快速搜索浮层（呼出时自动聚焦输入框）。
+        // 它与 Ctrl+F 的顶栏搜索框分工不同：这里搜「设置项 / 页面 / 记忆」并给候选，
+        // 顶栏那个只搜记忆（Enter 直排）。
         var toggleSearch = new KeyboardAccelerator
         {
             Key = VirtualKey.T,
             Modifiers = VirtualKeyModifiers.Control,
         };
-        toggleSearch.Invoked += (_, _) =>
-        {
-            var show = !_searchBarShown;
-            AnimateSearchBar(show);
-            if (show)
-            {
-                TxtGlobalSearch.Focus(FocusState.Programmatic);
-            }
-        };
+        toggleSearch.Invoked += (_, _) => ToggleQuickSearch();
         RootGrid.KeyboardAccelerators.Add(toggleSearch);
 
         // 外观：应用保存的主题设置（含标题栏配色，避免顶栏与内容区色调不一致）
@@ -557,96 +548,157 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    // ---------- ⌘K 命令面板 ----------
+    // ---------- 快速搜索（Ctrl+T / Ctrl+K） ----------
 
     private void BuildPaletteItems()
     {
+        // 页面候选：全部导航目标（与左导航同源，不重复维护第二份清单）
         foreach (var (group, items) in NavGroups)
         {
             foreach (var (tag, label, _, tip) in items)
             {
                 if (Views.ContainsKey(tag))
                 {
-                    _paletteItems.Add(new PaletteItem(tag, label, tip, group));
+                    _paletteItems.Add(new QuickSearchItem("页面", label, tip, tag, group, null, tag));
                 }
             }
         }
-    }
-
-    private void TogglePalette()
-    {
-        PaletteOverlay.Visibility =
-            PaletteOverlay.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
-        if (PaletteOverlay.Visibility == Visibility.Visible)
+        // 设置项候选：应用内各设置页的可操作项（Infrastructure/QuickSearchCatalog）
+        foreach (var s in QuickSearchCatalog.Settings)
         {
-            PaletteInput.Text = "";
-            RefreshPaletteList(_paletteItems);
-            PaletteInput.Focus(FocusState.Programmatic);
+            _paletteItems.Add(s);
         }
     }
 
-    private void RefreshPaletteList(List<PaletteItem> items)
+    private void ToggleQuickSearch()
     {
-        PaletteList.ItemsSource = items;
-        PaletteList.SelectedIndex = items.Count > 0 ? 0 : -1;
+        QuickSearchOverlay.Visibility =
+            QuickSearchOverlay.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+        if (QuickSearchOverlay.Visibility == Visibility.Visible)
+        {
+            QuickSearchInput.Text = "";
+            RefreshQuickSearchList(_paletteItems, query: "");
+            QuickSearchInput.Focus(FocusState.Programmatic);
+        }
     }
 
-    private void PaletteInput_TextChanged(object sender, TextChangedEventArgs e)
+    /// <summary>刷新候选列表；query 非空时在顶部插入「在全部记忆中搜索」动作项。</summary>
+    private void RefreshQuickSearchList(List<QuickSearchItem> items, string query)
     {
-        var query = (PaletteInput.Text ?? "").Trim();
+        var list = new List<QuickSearchItem>(items);
+        if (!string.IsNullOrEmpty(query))
+        {
+            list.Insert(0, new QuickSearchItem(
+                "检索", $"在全部记忆中搜索「{query}」", "词法匹配全部记忆事件",
+                "__memory__", "记忆检索", null, ""));
+        }
+        QuickSearchList.ItemsSource = list;
+        QuickSearchList.SelectedIndex = list.Count > 0 ? 0 : -1;
+        QuickSearchEmpty.Visibility = list.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void QuickSearchInput_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var query = (QuickSearchInput.Text ?? "").Trim();
         if (string.IsNullOrEmpty(query))
         {
-            RefreshPaletteList(_paletteItems);
+            RefreshQuickSearchList(_paletteItems, query: "");
             return;
         }
-        var matched = _paletteItems.FindAll(p =>
-            p.Label.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            p.Tip.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            p.Tag.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            p.Group.Contains(query, StringComparison.OrdinalIgnoreCase));
-        RefreshPaletteList(matched);
+        var matched = _paletteItems.FindAll(p => p.Matches(query));
+        RefreshQuickSearchList(matched, query);
     }
 
-    private void PaletteInput_KeyDown(object sender, KeyRoutedEventArgs e)
+    private void QuickSearchInput_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         switch (e.Key)
         {
             case Windows.System.VirtualKey.Down:
-                if (PaletteList.SelectedIndex < PaletteList.Items.Count - 1)
+                if (QuickSearchList.SelectedIndex < QuickSearchList.Items.Count - 1)
                 {
-                    PaletteList.SelectedIndex++;
+                    QuickSearchList.SelectedIndex++;
                 }
                 e.Handled = true;
                 break;
             case Windows.System.VirtualKey.Up:
-                if (PaletteList.SelectedIndex > 0)
+                if (QuickSearchList.SelectedIndex > 0)
                 {
-                    PaletteList.SelectedIndex--;
+                    QuickSearchList.SelectedIndex--;
                 }
                 e.Handled = true;
                 break;
             case Windows.System.VirtualKey.Enter:
-                if (PaletteList.SelectedItem is PaletteItem item)
-                {
-                    NavigateToTag(item.Tag);
-                    PaletteOverlay.Visibility = Visibility.Collapsed;
-                }
+                ExecuteQuickSearchItem(QuickSearchList.SelectedItem);
                 e.Handled = true;
                 break;
             case Windows.System.VirtualKey.Escape:
-                PaletteOverlay.Visibility = Visibility.Collapsed;
+                QuickSearchOverlay.Visibility = Visibility.Collapsed;
                 e.Handled = true;
                 break;
         }
     }
 
-    private void PaletteList_ItemClick(object sender, ItemClickEventArgs e)
+    /// <summary>点浮层空白处（暗背景）关闭；点面板内部不关（OriginalSource 是面板内的元素）。</summary>
+    private void QuickSearchOverlay_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        if (e.ClickedItem is PaletteItem item)
+        // ReferenceEquals：OriginalSource 是 object，与 Grid 的 == 会触发 CS0252 警告，
+        // 而这里要的就是引用相等（点在暗背景上时才关）。
+        if (ReferenceEquals(e.OriginalSource, QuickSearchOverlay))
         {
-            NavigateToTag(item.Tag);
-            PaletteOverlay.Visibility = Visibility.Collapsed;
+            QuickSearchOverlay.Visibility = Visibility.Collapsed;
         }
+    }
+
+    private void QuickSearchList_ItemClick(object sender, ItemClickEventArgs e)
+        => ExecuteQuickSearchItem(e.ClickedItem);
+
+    /// <summary>执行一条候选：检索动作 → 跑记忆检索；其余 → 跳页，设置项再聚焦到锚点控件。</summary>
+    private void ExecuteQuickSearchItem(object? item)
+    {
+        if (item is not QuickSearchItem qi)
+        {
+            return;
+        }
+        QuickSearchOverlay.Visibility = Visibility.Collapsed;
+
+        if (string.Equals(qi.Tag, "__memory__", StringComparison.Ordinal))
+        {
+            RunGlobalSearch((QuickSearchInput.Text ?? "").Trim());
+            return;
+        }
+
+        NavigateToTag(qi.Tag);
+        if (qi.Anchor is null || !Views.TryGetValue(qi.Tag, out var viewType))
+        {
+            return;
+        }
+        if (_viewCache.TryGetValue(viewType, out var view) && view is FrameworkElement host
+            && host.FindName(qi.Anchor) is UIElement target)
+        {
+            RevealAnchor(target);
+        }
+    }
+
+    /// <summary>
+    /// 把锚点控件带进视野并聚焦：先展开途经的所有 Expander（高级设置默认折叠，
+    /// 锚点在里层时直接滚动会落空），再 StartBringIntoView + 聚焦。
+    /// </summary>
+    private static void RevealAnchor(UIElement target)
+    {
+        DependencyObject? node = target;
+        while (node is not null)
+        {
+            if (node is Expander expander)
+            {
+                expander.IsExpanded = true;
+            }
+            node = VisualTreeHelper.GetParent(node);
+        }
+        if (target is FrameworkElement fe)
+        {
+            fe.StartBringIntoView();
+        }
+        target.Focus(FocusState.Programmatic);
     }
 
     // ---------- 基础设施 ----------

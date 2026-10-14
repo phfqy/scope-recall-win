@@ -17,8 +17,8 @@
     <AssemblyName>ScopeRecallWin</AssemblyName>
     <!-- 应用图标（exe 图标；多尺寸由 generate_icons.py 生成） -->
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>1.3.1</Version>
-    <InformationalVersion>1.3.1</InformationalVersion>
+    <Version>1.3.8</Version>
+    <InformationalVersion>1.3.8</InformationalVersion>
     <!-- 自定义入口：禁用 XAML 生成的 Main，改由 Program.cs 显式初始化
          Windows App SDK Bootstrap（自动初始化在本机会 fail-fast，见 Program.cs 注释）。 -->
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
@@ -40,6 +40,7 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
     <!-- 只读 SQLite：读通道（Mode=ReadOnly） -->
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
+    <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -47,9 +48,12 @@
     <None Update="app.manifest" />
     <!-- 应用图标随输出复制（窗口/任务栏图标由 MainWindow.TrySetIcon 运行时加载） -->
     <Content Include="Assets\app.ico" CopyToOutputDirectory="PreserveNewest" />
-    <!-- 云同步桥：Python 侧脚本随应用一起分发（CloudSyncService 在 bridge\ 下查找）。
-         这些脚本以只读方式打开记忆库，写回只走官方记忆接口。 -->
+    <!-- 云同步桥：Python 侧脚本随应用分发 -->
     <Content Include="bridge\*.py" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 远端接入：CLI / MCP / SKILL 随应用分发到 <安装目录>\remote\，
+         远端机器可直接拷这三个文件接进来（无需去仓库翻） -->
+    <Content Include="remote\*.py" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="remote\SKILL.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- 注意：unpackaged 形态下的 Windows App SDK 运行时由 Program.cs 显式

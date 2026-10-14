@@ -33,6 +33,7 @@ public sealed record CloudSyncConfig(
     string? User,
     string? Bucket,
     string? Endpoint,
+    string? AccessKeyId,
     string Region,
     string Root,
     int IntervalSeconds,
@@ -41,7 +42,8 @@ public sealed record CloudSyncConfig(
 {
     public static CloudSyncConfig From(AppSettings s) => new(
         s.CloudSyncEnabled, s.CloudSyncBackend, s.CloudSyncUrl, s.CloudSyncUser,
-        s.CloudSyncBucket, s.CloudSyncEndpoint, s.CloudSyncRegion, s.CloudSyncRoot,
+        s.CloudSyncBucket, s.CloudSyncEndpoint, s.CloudSyncAccessKeyId,
+        s.CloudSyncRegion, s.CloudSyncRoot,
         s.CloudSyncIntervalSeconds, s.CloudSyncIncludeEvents, s.CloudSyncPythonPath);
 }
 
@@ -63,6 +65,8 @@ public sealed record CloudSyncConfig(
 /// </remarks>
 public interface ICloudSyncService
 {
+    /// <summary>远端 agent 链接状态（读云端账本聚合 origin_agent；只读，不碰共享库）。</summary>
+    Task<RemoteLinkStatus?> GetRemoteLinkStatusAsync(string memoryRoot, CancellationToken ct = default);
     /// <summary>读取当前配置。</summary>
     CloudSyncConfig GetConfig();
 
@@ -93,6 +97,50 @@ public interface ICloudSyncService
 
 /// <summary>云桥成员接入结果。</summary>
 public sealed record CloudEntryResult(bool Attached, bool AlreadyPresent, string Message, string? RawOutput);
+
+/// <summary>云端账本里识别到的一个远端写入者（按 origin_agent 聚合；home 主桥的记录无该字段）。</summary>
+public sealed record RemoteLinkWriter(
+    string Agent, int Records, int Claims, int Events, double LastUpdateTs, string? LastUpdateIso);
+
+/// <summary>
+/// 远端 agent 链接状态：读云端账本（state.json + 最近记录抽样）聚合 origin_agent 得出。
+/// 与远端 CLI sr_cloud_remote.py（SKILL sr-cloud-memory）共用同一账本 —— 远端 propose
+/// 打 origin_agent 标记，控制台据此显示「谁在连、最近何时、贡献了多少」。
+/// </summary>
+public sealed record RemoteLinkStatus(
+    bool Reachable,
+    string? Error,
+    int TotalRecords,
+    int Claims,
+    int Events,
+    bool Sampled,
+    int SampleSize,
+    string? LastUpdateIso,
+    IReadOnlyList<RemoteLinkWriter> Writers,
+    CloudSyncRound? LastRound,
+    bool Fallback = false)
+{
+    /// <summary>最近一次云端更新距现在多久（人话；账本为空返回 null）。</summary>
+    public string? LastUpdateHuman
+    {
+        get
+        {
+            if (LastUpdateIso is null)
+            {
+                return null;
+            }
+            if (!DateTimeOffset.TryParse(LastUpdateIso, out var ts))
+            {
+                return LastUpdateIso;
+            }
+            var span = DateTimeOffset.Now - ts;
+            return span.TotalMinutes < 1 ? "刚刚"
+                : span.TotalHours < 1 ? $"{(int)span.TotalMinutes} 分钟前"
+                : span.TotalDays < 1 ? $"{(int)span.TotalHours} 小时前"
+                : $"{(int)span.TotalDays} 天前";
+        }
+    }
+}
 
 /// <summary>环境自检结果。</summary>
 public sealed record CloudSyncPreflight(
@@ -136,6 +184,7 @@ public sealed partial class CloudSyncService : ICloudSyncService
         s.CloudSyncUser = config.User;
         s.CloudSyncBucket = config.Bucket;
         s.CloudSyncEndpoint = config.Endpoint;
+        s.CloudSyncAccessKeyId = config.AccessKeyId;
         s.CloudSyncRegion = config.Region;
         s.CloudSyncRoot = config.Root;
         s.CloudSyncIntervalSeconds = config.IntervalSeconds;
@@ -158,8 +207,14 @@ public sealed partial class CloudSyncService : ICloudSyncService
     }
 
     /// <summary>
-    /// 解析解释器：优先用户在设置里指定的专用 venv（装 webdav4/boto3/mcp），
-    /// 其次应用目录旁的 .venv，最后才回落到插件的 shared-venv（可能缺依赖）。
+    /// 解析解释器（顺序很重要）：
+    ///   1. 用户在设置里显式指定的；
+    ///   2. 应用数据目录下的专用 venv（%LOCALAPPDATA%\ScopeRecallWin\cloudsync-venv）——
+    ///      这是安装时建好的推荐位置，**放在安装目录之外**，所以升级/重装应用不会把它删掉；
+    ///   3. 应用目录旁的 .venv（开发态）；
+    ///   4. 最后才回落插件的 shared-venv —— 它没有 webdav4/boto3，预检会明确报缺依赖。
+    /// 注意必须**优先专用 venv**：插件的 shared-venv 装了 scope_recall 但没有同步依赖，
+    /// 直接用它会让每一轮同步都失败。
     /// </summary>
     public string? ResolvePython(string memoryRoot)
     {
@@ -171,6 +226,7 @@ public sealed partial class CloudSyncService : ICloudSyncService
 
         foreach (var candidate in new[]
                  {
+                     DedicatedVenvPython,
                      Path.Combine(AppContext.BaseDirectory, ".venv", "Scripts", "python.exe"),
                      Path.Combine(AppContext.BaseDirectory, "..", ".venv", "Scripts", "python.exe"),
                  })
@@ -185,6 +241,11 @@ public sealed partial class CloudSyncService : ICloudSyncService
         return PathDiscovery.FindVenvPython(memoryRoot);
     }
 
+    /// <summary>推荐安装位置：应用数据目录下的专用 venv（独立于安装目录，升级不丢）。</summary>
+    public static string DedicatedVenvPython => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "ScopeRecallWin", "cloudsync-venv", "Scripts", "python.exe");
+
     public async Task<CloudSyncPreflight> PreflightAsync(string memoryRoot, CancellationToken ct = default)
     {
         var script = ResolveBridgeScript();
@@ -194,7 +255,9 @@ public sealed partial class CloudSyncService : ICloudSyncService
         {
             return new CloudSyncPreflight(false, null, null, script is not null, script,
                 false, Array.Empty<string>(),
-                "未找到 Python 解释器：请指定专用 venv，或先完成插件部署。");
+                "未找到 Python 解释器。请在设置里指定专用 venv 的 python.exe，或按下方命令创建：\n" +
+                $"  python -m venv \"{Path.GetDirectoryName(Path.GetDirectoryName(DedicatedVenvPython))}\"\n" +
+                $"  \"{DedicatedVenvPython}\" -m pip install mcp==2.1.0 webdav4 boto3");
         }
 
         var versionResult = await ProcessRunner.RunAsync(python, "-V", timeoutMs: 20_000, cancellationToken: ct)
@@ -227,8 +290,9 @@ public sealed partial class CloudSyncService : ICloudSyncService
         }
         else if (missing.Count > 0)
         {
-            message = $"该 Python 缺少依赖：{string.Join(" / ", missing)}。" +
-                      "请在专用 venv 里安装后重试（不要装进插件的 shared-venv）。";
+            message = $"该 Python 缺少依赖：{string.Join(" / ", missing)}。\n" +
+                      $"请安装后重试（不要装进插件的 shared-venv）：\n  \"{python}\" -m pip install " +
+                      string.Join(' ', missing);
         }
 
         return new CloudSyncPreflight(
@@ -476,42 +540,158 @@ public sealed partial class CloudSyncService : ICloudSyncService
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "ScopeRecallWin", "cloudsync-status.json");
 
-    /// <summary>从凭据管理器取出云端口令并转成环境变量。</summary>
+    /// <summary>
+    /// 远端 agent 链接状态：调用桥目录里的 remote_status.py（只读探针，与桥共用后端与凭据环境），
+    /// 读云端账本并按 origin_agent 聚合。探针用**专用 venv** 解释器（有 webdav4/boto3）。
+    /// </summary>
+    public async Task<RemoteLinkStatus?> GetRemoteLinkStatusAsync(string memoryRoot, CancellationToken ct = default)
+    {
+        var bridgeScript = ResolveBridgeScript();
+        var bridgeDir = bridgeScript is null ? null : Path.GetDirectoryName(bridgeScript);
+        var probe = bridgeDir is null ? null : Path.Combine(bridgeDir, "remote_status.py");
+        if (probe is null || !File.Exists(probe))
+        {
+            return new RemoteLinkStatus(false, "未找到探针脚本 remote_status.py（应随应用分发在 bridge\\ 目录）。",
+                0, 0, 0, false, 0, null, Array.Empty<RemoteLinkWriter>(), ReadLastStatus(memoryRoot));
+        }
+        var python = DedicatedVenvPython;
+        if (!File.Exists(python))
+        {
+            return new RemoteLinkStatus(false, "未找到专用 venv 解释器（远端探针需要 webdav4/boto3）。",
+                0, 0, 0, false, 0, null, Array.Empty<RemoteLinkWriter>(), ReadLastStatus(memoryRoot));
+        }
+
+        var config = GetConfig();
+        var parts = new List<string>
+        {
+            Quote(probe),
+            "--backend", config.Backend,
+            "--sample", "60",
+        };
+        if (!string.IsNullOrWhiteSpace(config.Root))
+        {
+            parts.Add("--root"); parts.Add(Quote(config.Root));
+        }
+        if (string.Equals(config.Backend, "webdav", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrWhiteSpace(config.Url)) { parts.Add("--url"); parts.Add(Quote(config.Url)); }
+            if (!string.IsNullOrWhiteSpace(config.User)) { parts.Add("--user"); parts.Add(Quote(config.User)); }
+        }
+        else if (string.Equals(config.Backend, "s3", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrWhiteSpace(config.Bucket)) { parts.Add("--bucket"); parts.Add(Quote(config.Bucket)); }
+            if (!string.IsNullOrWhiteSpace(config.Endpoint)) { parts.Add("--endpoint"); parts.Add(Quote(config.Endpoint)); }
+        }
+
+        var env = await BuildSecretEnvironmentAsync(config).ConfigureAwait(false);
+        var previous = new Dictionary<string, string?>();
+        foreach (var (key, value) in env)
+        {
+            previous[key] = Environment.GetEnvironmentVariable(key);
+            Environment.SetEnvironmentVariable(key, value);
+        }
+
+        try
+        {
+            var result = await ProcessRunner.RunAsync(
+                python, string.Join(' ', parts), workingDirectory: bridgeDir,
+                timeoutMs: 180_000, cancellationToken: ct).ConfigureAwait(false);
+            var stdout = (result.StdOut ?? "").Trim();
+            if (!stdout.StartsWith('{'))
+            {
+                return new RemoteLinkStatus(false,
+                    MaintenanceCli.FailureText(result),
+                    0, 0, 0, false, 0, null, Array.Empty<RemoteLinkWriter>(), ReadLastStatus(memoryRoot));
+            }
+            using var doc = System.Text.Json.JsonDocument.Parse(stdout);
+            var e = doc.RootElement;
+
+            var writers = new List<RemoteLinkWriter>();
+            if (e.TryGetProperty("writers", out var arr) && arr.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var w in arr.EnumerateArray())
+                {
+                    writers.Add(new RemoteLinkWriter(
+                        Str(w, "agent") ?? "unknown",
+                        Int(w, "records"),
+                        Int(w, "claims"),
+                        Int(w, "events"),
+                        Double(w, "last_ts"),
+                        Str(w, "last_iso")));
+                }
+            }
+            var status = new RemoteLinkStatus(
+                Str(e, "reachable") == "True" || (e.TryGetProperty("reachable", out var reach) && reach.ValueKind == System.Text.Json.JsonValueKind.True),
+                Str(e, "error"),
+                Int(e, "total_records"),
+                Int(e, "claims"),
+                Int(e, "events"),
+                Str(e, "sampled") == "True",
+                Int(e, "sample_size"),
+                Str(e, "last_update_iso"),
+                writers,
+                ReadLastStatus(memoryRoot),
+                Str(e, "fallback") == "True");
+            return status;
+        }
+        catch (Exception ex)
+        {
+            return new RemoteLinkStatus(false, $"{ex.GetType().Name}: {ex.Message}",
+                0, 0, 0, false, 0, null, Array.Empty<RemoteLinkWriter>(), ReadLastStatus(memoryRoot));
+        }
+        finally
+        {
+            foreach (var (key, value) in previous)
+            {
+                Environment.SetEnvironmentVariable(key, value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 组装子进程需要的云端凭据环境变量。
+    /// 口令（WebDAV 应用密码 / S3 Secret Access Key）从 Windows 凭据管理器取；
+    /// S3 的 Access Key ID 是标识符，直接取自配置（见 AppSettings.CloudSyncAccessKeyId）。
+    /// </summary>
     internal async Task<Dictionary<string, string>> BuildSecretEnvironmentAsync(CloudSyncConfig config)
     {
         var env = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (_credentials is null)
-        {
-            return env;
-        }
 
         if (string.Equals(config.Backend, "webdav", StringComparison.OrdinalIgnoreCase))
         {
-            var account = config.User ?? "";
-            var pwd = await _credentials.GetAsync(CredentialServiceName, account).ConfigureAwait(false);
-            if (!string.IsNullOrEmpty(pwd))
+            if (_credentials is not null)
             {
-                env["SR_CLOUD_PWD"] = pwd;
+                var account = config.User ?? "";
+                var pwd = await _credentials.GetAsync(CredentialServiceName, account).ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(pwd))
+                {
+                    env["SR_CLOUD_PWD"] = pwd;
+                }
             }
         }
         else if (string.Equals(config.Backend, "s3", StringComparison.OrdinalIgnoreCase))
         {
-            var access = await _credentials.GetAsync(CredentialServiceName, "s3-access-key").ConfigureAwait(false);
-            var secret = await _credentials.GetAsync(CredentialServiceName, "s3-secret-key").ConfigureAwait(false);
-            if (!string.IsNullOrEmpty(access))
+            // Access Key ID 来自配置（非敏感标识符）；此前只从凭据管理器读，
+            // 而没有任何地方写入过它 → S3 永远拿不到 access key。
+            if (!string.IsNullOrWhiteSpace(config.AccessKeyId))
             {
-                env["S3_ACCESS_KEY"] = access;
+                env["S3_ACCESS_KEY"] = config.AccessKeyId;
             }
-            if (!string.IsNullOrEmpty(secret))
+            if (_credentials is not null)
             {
-                env["S3_SECRET_KEY"] = secret;
+                var secret = await _credentials.GetAsync(CredentialServiceName, "s3-secret-key").ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(secret))
+                {
+                    env["S3_SECRET_KEY"] = secret;
+                }
             }
         }
         return env;
     }
 
     public CloudSyncRound? ReadLastStatus(string memoryRoot)
-    {        var path = StatusPath(memoryRoot);
+    {
+        var path = StatusPath(memoryRoot);
         if (!File.Exists(path))
         {
             return null;

@@ -237,6 +237,26 @@ public static class MaintenanceCli
             var field = Str(doc.RootElement, "field");
             if (message is null && code is null)
             {
+                // package-upgrade 的 blocked 回执没有 error 字段，只有
+                // state=blocked + error_type + reason（+ next_action）—— 翻译它而不是说「未给出」。
+                if (Str(doc.RootElement, "state") is { } state && state == "blocked")
+                {
+                    var reason = Str(doc.RootElement, "reason");
+                    var parts = new List<string> { "升级被阻止" };
+                    if (reason is not null)
+                    {
+                        parts.Add(ReasonZh(reason));
+                    }
+                    else if (Str(doc.RootElement, "error_type") is { } etype)
+                    {
+                        parts.Add($"错误类型 {etype}");
+                    }
+                    if (Str(doc.RootElement, "next_action") is { } next)
+                    {
+                        parts.Add(NextActionZh(next));
+                    }
+                    return string.Join("：", parts.Where(p => !string.IsNullOrWhiteSpace(p))) + "。";
+                }
                 return null;
             }
             var text = message ?? "官方 CLI 报错（未给出原因）";
@@ -254,6 +274,37 @@ public static class MaintenanceCli
             return null;
         }
     }
+
+    /// <summary>package-upgrade 阻止原因 → 人话（上游 package_upgrade.py 的固定 code）。</summary>
+    private static string ReasonZh(string reason) => reason switch
+    {
+        "installed_files_locked_or_not_replaceable" =>
+            "安装文件被占用（常见为后台 worker 或杀毒软件仍在使用），等这些进程退出后再执行一次即可",
+        "stop_all_target_writers_and_restarters_first" => "需先停止所有写入者与自动重启器",
+        "uv_required_no_pip_bootstrap" => "缺少外部 uv 可执行文件",
+        "uv_must_be_external_executable" => "uv 路径无效（不存在或不是文件）",
+        "uv_must_be_outside_target_venv" => "uv 不能位于目标 venv 内",
+        "backup_and_wheel_must_be_outside_target_venv" => "备份目录与 wheel 不能放在目标 venv 内",
+        "wrong_wheel_distribution" => "wheel 的发行版名称不对",
+        "wheel_distribution_ambiguous" => "wheel 内含多个发行版，无法辨认",
+        "record_outside_target_venv_or_missing" => "已装文件清单异常（缺失或不在 venv 内）",
+        "backup_verification_failed" => "备份校验失败",
+        "uv_install_failed" => "uv 换包失败",
+        "installed_version_mismatch" => "换包后版本不符",
+        "installed_import_failed" => "换包后无法导入包",
+        "package_step_failed_backup_retained" => "换包失败（备份已保留）",
+        _ => reason,
+    };
+
+    /// <summary>上游 next_action → 人话。</summary>
+    private static string NextActionZh(string next) => next switch
+    {
+        "nothing_changed_wait_for_package_processes_to_exit_then_run_again" =>
+            "本次什么都没动，等占用进程退出后再执行一次",
+        "preserve_backup_keep_hosts_stopped_diagnose" => "请保留备份、保持各助手停止，先排查原因",
+        "apply_install_then_doctor_before_restart" => "下一步：重跑安装应用与 doctor 再重启各助手",
+        _ => "下一步：" + next,
+    };
 
     private static string? Str(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String

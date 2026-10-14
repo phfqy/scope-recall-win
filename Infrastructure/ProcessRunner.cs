@@ -46,6 +46,11 @@ public static class ProcessRunner
             StandardOutputEncoding = System.Text.Encoding.UTF8,
             StandardErrorEncoding = System.Text.Encoding.UTF8,
         };
+        // Python 子进程在 Windows 上默认按 ANSI 代码页（简体中文环境为 GBK）写 stdout，
+        // 与上面的 UTF-8 解码错位 → 中文输出整段变乱码（曾表现为探针错误消息 �丨�）。
+        // 用环境变量强制 Python 侧也走 UTF-8；非 Python 进程忽略这两个变量，无副作用。
+        info.EnvironmentVariables["PYTHONUTF8"] = "1";
+        info.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
 
         Process? proc;
         try
