@@ -4,7 +4,7 @@
   V1  XAML/app.manifest XML 良构
   V2  StaticResource 引用 vs 资源字典定义（缺失即 XAML 编译/运行期炸）
   V3  x:Class 与代码隐藏类名/文件一一对应
-  V4  MainWindow 路由表 18 项 ↔ 导航 18 项 ↔ 视图文件存在
+  V4  MainWindow 路由表 ↔ 导航项 ↔ 视图文件三者一致（数量由代码推导，不写死）
   V5  C# 括号/方括号/圆括号配平 + namespace 一致
   V6  installer/ 安装器产物存在且有效（app.ico / setup.iss）
   V7  上游口径残留扫描（mutate CLI / create 变更 / deleted 状态 等禁用表述）

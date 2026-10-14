@@ -123,11 +123,16 @@ public partial class App : Application
         ServiceLocator.Register<IStorageService>(new StorageService());
         ServiceLocator.Register<IMutateService>(new MutateService());
         ServiceLocator.Register<IWorkerService>(new WorkerService());
-        ServiceLocator.Register<ICredentialService>(new CredentialService());
+        var credentials = new CredentialService();
+        ServiceLocator.Register<ICredentialService>(credentials);
 
         var plugin = new PluginService();
         ServiceLocator.Register<IPluginService>(plugin);
         ServiceLocator.Register<IAgentLinkService>(new AgentLinkService(plugin));
         ServiceLocator.Register<IModelConfigService>(new ModelConfigService());
+
+        // 云同步：托管 Python 桥子进程。复用同一个凭据服务实例 —— 口令只经 Windows
+        // 凭据管理器，不落 settings.json / 命令行参数 / 日志。
+        ServiceLocator.Register<ICloudSyncService>(new CloudSyncService(credentials));
     }
 }

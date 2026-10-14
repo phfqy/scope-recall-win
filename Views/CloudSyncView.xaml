@@ -1,0 +1,160 @@
+<UserControl
+    x:Class="ScopeRecallWin.Views.CloudSyncView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
+
+    <ScrollViewer>
+        <StackPanel Padding="26" Spacing="14" MaxWidth="900">
+
+            <TextBlock Text="云同步" Style="{StaticResource PageTitleTextStyle}" />
+            <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                       Text="把本机的共享记忆同步到云端（坚果云 / S3 兼容存储），让远端助手也能读到并写入记忆。本机记忆库始终以只读方式打开；远端写入经官方记忆接口落库，控制台本身不写一行 SQL。" />
+
+            <!-- ============ 当前状态 ============ -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource SectionHeaderTextStyle}"
+                                   Text="同步状态" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" x:Name="BtnRefresh" Content="刷新" Click="BtnRefresh_Click" />
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Border x:Name="SyncLed" Width="10" Height="10" CornerRadius="5"
+                                Background="#8A8A92" VerticalAlignment="Center" />
+                        <TextBlock x:Name="TxtState" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="TxtLastRound" Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap" />
+
+                    <!-- 上一轮计数 -->
+                    <Grid ColumnSpacing="10" RowSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="上传" Style="{StaticResource PageDescTextStyle}" />
+                        <TextBlock Grid.Row="1" Grid.Column="0" x:Name="TxtPushed" FontSize="20" FontWeight="SemiBold" Text="—" />
+
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="拉取" Style="{StaticResource PageDescTextStyle}" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="TxtPulled" FontSize="20" FontWeight="SemiBold" Text="—" />
+
+                        <TextBlock Grid.Row="0" Grid.Column="2" Text="写入记忆库" Style="{StaticResource PageDescTextStyle}" />
+                        <TextBlock Grid.Row="1" Grid.Column="2" x:Name="TxtWritten" FontSize="20" FontWeight="SemiBold" Text="—" />
+
+                        <TextBlock Grid.Row="0" Grid.Column="3" Text="冲突待裁决" Style="{StaticResource PageDescTextStyle}" />
+                        <TextBlock Grid.Row="1" Grid.Column="3" x:Name="TxtConflicts" FontSize="20" FontWeight="SemiBold" Text="—" />
+                    </Grid>
+
+                    <TextBlock x:Name="TxtErrors" TextWrapping="Wrap" FontSize="12.5"
+                               Foreground="{StaticResource MutedTextBrush}" Visibility="Collapsed" />
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 环境自检 ============ -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="环境自检" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="云同步需要一个带 mcp / webdav4 / boto3 的 Python 环境。建议使用专用虚拟环境，不要装进记忆插件自己的运行环境。" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="BtnPreflight" Content="开始自检" Click="BtnPreflight_Click" />
+                        <Button x:Name="BtnPickPython" Content="选择 Python…" Click="BtnPickPython_Click" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="TxtPython" Style="{StaticResource MonoTextStyle}" TextWrapping="Wrap" />
+                    <TextBlock x:Name="TxtPreflight" TextWrapping="Wrap" FontSize="12.5"
+                               Foreground="{StaticResource MutedTextBrush}" />
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 云端配置 ============ -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="云端存储" />
+
+                    <controls:FilterPicker x:Name="PickerBackend" Header="存储类型"
+                                           ButtonMinWidth="260" />
+
+                    <TextBox x:Name="TxtUrl" Header="服务地址（WebDAV）"
+                             PlaceholderText="例如 https://dav.jianguoyun.com/dav/" />
+                    <TextBox x:Name="TxtUser" Header="账号（WebDAV 用户名 / 邮箱）"
+                             PlaceholderText="例如 you@example.com" />
+                    <PasswordBox x:Name="PwdSecret" Header="口令（坚果云请填「应用密码」，不是登录密码）"
+                                 PlaceholderText="仅保存在 Windows 凭据管理器，不写入配置文件" />
+
+                    <TextBox x:Name="TxtBucket" Header="Bucket（S3 兼容存储）" PlaceholderText="例如 scope-recall" />
+                    <TextBox x:Name="TxtEndpoint" Header="Endpoint（S3 兼容存储）"
+                             PlaceholderText="例如 https://你的账户ID.r2.cloudflarestorage.com" />
+
+                    <TextBox x:Name="TxtRoot" Header="云端目录（可选，留空表示根目录）" PlaceholderText="例如 scope-recall" />
+
+                    <NumberBox x:Name="NumInterval" Header="轮询间隔（秒，最低 60）"
+                               Value="60" Minimum="60" Maximum="86400" SpinButtonPlacementMode="Compact" />
+
+                    <CheckBox x:Name="ChkIncludeEvents" Content="同时同步原始对话事件（关闭则只同步提炼后的记忆，隐私更干净）" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="BtnSave" Content="保存配置"
+                                Style="{StaticResource AccentButtonStyle}" Click="BtnSave_Click" />
+                        <Button x:Name="BtnTest" Content="测试云端连接" Click="BtnTest_Click" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="TxtConfigState" TextWrapping="Wrap" FontSize="12.5"
+                               Foreground="{StaticResource MutedTextBrush}" />
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 执行同步（写操作） ============ -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="执行同步" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="同步会把云端的新记忆写入本机共享库。写入经官方记忆接口完成，且会在执行前自动备份本机记忆库；备份失败则中止同步。" />
+
+                    <TextBox x:Name="TxtAuthorization" Header="授权说明（必填，请写明本次同步的用途）"
+                             PlaceholderText="例如：把远端助手的记忆同步到本机" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="BtnSync" Content="备份并同步一轮"
+                                Style="{StaticResource AccentButtonStyle}" Click="BtnSync_Click" />
+                        <Button x:Name="BtnOpenBackups" Content="打开备份目录" Click="BtnOpenBackups_Click" />
+                    </StackPanel>
+
+                    <ProgressBar x:Name="SyncProgress" IsIndeterminate="True" Visibility="Collapsed" />
+                    <TextBlock x:Name="TxtSyncState" TextWrapping="Wrap" FontSize="12.5"
+                               Foreground="{StaticResource MutedTextBrush}" />
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 说明 ============ -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="需要了解的几点" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="• 只同步变化的部分：没有任何改动时不会产生上传流量。" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="• 坚果云免费版对高频请求会限流（返回 503），轮询间隔请勿低于 60 秒。" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="• 本机与云端同时修改同一条记忆时会记为「冲突」并保留，不会静默覆盖。" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                               Text="• 云端内容由你选择的存储服务保管；如记忆含敏感信息，请先关闭「同步原始对话事件」。" />
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

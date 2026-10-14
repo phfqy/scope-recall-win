@@ -47,6 +47,9 @@
     <None Update="app.manifest" />
     <!-- 应用图标随输出复制（窗口/任务栏图标由 MainWindow.TrySetIcon 运行时加载） -->
     <Content Include="Assets\app.ico" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 云同步桥：Python 侧脚本随应用一起分发（CloudSyncService 在 bridge\ 下查找）。
+         这些脚本以只读方式打开记忆库，写回只走官方记忆接口。 -->
+    <Content Include="bridge\*.py" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- 注意：unpackaged 形态下的 Windows App SDK 运行时由 Program.cs 显式

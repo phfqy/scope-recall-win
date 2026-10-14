@@ -14,7 +14,7 @@ namespace ScopeRecallWin;
 
 public sealed partial class MainWindow : Window
 {
-    /// <summary>路由 Tag → 视图类型（18 个视图，对应提示词包 P1）。</summary>
+    /// <summary>路由 Tag → 视图类型（19 个视图：原 18 个 + 云同步）。</summary>
     private static readonly Dictionary<string, Type> Views = new()
     {
         ["overview"]    = typeof(Views.OverviewView),
@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
         ["update"]      = typeof(Views.UpdateView),
         ["install"]     = typeof(Views.InstallView),
         ["shared"]      = typeof(Views.SharedStoreView),
+        ["cloudsync"]   = typeof(Views.CloudSyncView),
         ["settings"]    = typeof(Views.SettingsView),
     };
 
@@ -72,10 +73,11 @@ public sealed partial class MainWindow : Window
         }),
         ("维护与共享", new[]
         {
-            ("update",   "更新", "\uE777", "软件与插件版本"),
-            ("install",  "安装", "\uE7B8", "部署目录与首次安装"),
-            ("shared",   "共享存储", "\uE716", "已接入的助手成员管理"),
-            ("settings", "设置", "\uE713", "外观 / 更新 / 开机自启"),
+            ("update",     "更新", "\uE777", "软件与插件版本"),
+            ("install",    "安装", "\uE7B8", "部署目录与首次安装"),
+            ("shared",     "共享存储", "\uE716", "已接入的助手成员管理"),
+            ("cloudsync",  "云同步", "\uE753", "把本机记忆同步到云端供远端助手使用"),
+            ("settings",   "设置", "\uE713", "外观 / 更新 / 开机自启"),
         }),
     };
 
