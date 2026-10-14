@@ -6,8 +6,74 @@
 - 云端→本地：云端文件更新 → 自动下载合并
 - 冲突规则：比较 (mtime, hash)，云端新则拉、本地新则推、同时则云端胜（保守）
 - 后端：LocalDir（测试/自建）/ WebDAV（AList·QDAV·公共点）/ S3（OSS·COS·R2）
+- 网络健壮性：webdav/s3 的全部网络调用对 429/500/502/503/504 与连接抖动指数退避重试
+  （1.5→3→6→12→24s，至多 6 次）；坚果云免费版的 503 BlockedTemporarily 是账号级
+  封锁，重试耗尽后抛**可操作**的 RuntimeError（watch 模式跳过本轮，绝不死扛成静默失败）
 """
-import os, sys, json, time, hashlib, argparse
+import os, sys, json, time, hashlib, argparse, socket
+
+# ---------------------------------------------------------------- 网络重试
+RETRY_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+RETRY_DELAYS = (1.5, 3.0, 6.0, 12.0, 24.0)  # 共 len+1 = 6 次尝试
+
+
+def _status_of(exc):
+    """尽最大努力从异常里挖 HTTP 状态码（requests/httpx 在 response 上，botocore 在 dict 里）。"""
+    for attr in ("status_code", "code"):
+        v = getattr(exc, attr, None)
+        if isinstance(v, int):
+            return v
+    resp = getattr(exc, "response", None)
+    if isinstance(resp, dict):
+        v = (resp.get("ResponseMetadata") or {}).get("HTTPStatusCode")
+        return v if isinstance(v, int) else None
+    v = getattr(resp, "status_code", None)
+    return v if isinstance(v, int) else None
+
+
+def _is_retryable(exc) -> bool:
+    if isinstance(exc, (socket.timeout, TimeoutError, ConnectionError)):
+        return True
+    if type(exc).__name__ in ("ConnectionError", "Timeout", "ReadTimeout",
+                              "ConnectTimeout", "ChunkedEncodingError", "ProtocolError", "SSLError"):
+        return True
+    resp = getattr(exc, "response", None)
+    if isinstance(resp, dict):
+        if (resp.get("Error") or {}).get("Code") in ("RequestTimeout", "Throttling",
+                                                     "ThrottlingException", "SlowDown",
+                                                     "ServiceUnavailable", "InternalError"):
+            return True
+    return _status_of(exc) in RETRY_STATUS_CODES
+
+
+def net_retry(fn, what, delays=RETRY_DELAYS):
+    """带指数退避的网络调用。404 原样抛出（调用方按「不存在」处理）。"""
+    attempts = len(delays) + 1
+    last = None
+    for i in range(attempts):
+        try:
+            return fn()
+        except Exception as e:  # noqa: BLE001 —— 网络异常形态太多，统一收敛
+            last = e
+            st = _status_of(e)
+            if st == 404:
+                raise
+            if st in (401, 403) or not _is_retryable(e) or i == attempts - 1:
+                body = ""
+                text = getattr(getattr(e, "response", None), "text", None)
+                if isinstance(text, str):
+                    body = text[:300]
+                if st == 503 or "BlockedTemporarily" in body or "Too many requests" in body:
+                    raise RuntimeError(
+                        f"{what}：云端限流（HTTP 503 BlockedTemporarily，坚果云免费版为账号级封锁，"
+                        f"通常持续数分钟）。已退避重试 {len(delays)} 次仍失败——请等待几分钟后重试。")
+                if st in (401, 403):
+                    raise RuntimeError(
+                        f"{what}：云端认证失败（HTTP {st}）。坚果云须用应用密码而非登录密码。")
+                raise RuntimeError(
+                    f"{what}：网络错误 {type(e).__name__}: {e}（已退避重试 {len(delays)} 次）")
+            time.sleep(delays[i])
+    raise RuntimeError(f"{what}：网络错误 {type(last).__name__}: {last}")
 
 class StorageBackend:
     """云端文件存储抽象：以 'key'（相对路径）为单位"""
@@ -87,34 +153,39 @@ class WebDAVBackend(StorageBackend):
     def _key(self, key):
         return f"{self.root}/{key}" if self.root else key
     def meta(self, key):
-        from webdav4.client import Client
         k = self._key(key)
         try:
-            infos = self.client.ls(os.path.dirname(k) or "/", detail=True)
-            for i in infos:
-                if i["name"] == os.path.basename(k) or i["name"].rstrip("/") == k.rstrip("/"):
-                    return {"size": i.get("size", 0), "mtime": i.get("last_modified", 0),
-                            "etag": i.get("etag", "")}
+            infos = net_retry(lambda: self.client.ls(os.path.dirname(k) or "/", detail=True),
+                              f"枚举 {k}")
+        except RuntimeError:
+            raise                       # 重试耗尽：不许伪装成「不存在」（会误导成 push 覆盖）
         except Exception:
-            return None
+            return None                 # 404/不存在
+        for i in infos:
+            if i["name"] == os.path.basename(k) or i["name"].rstrip("/") == k.rstrip("/"):
+                return {"size": i.get("size", 0), "mtime": i.get("last_modified", 0),
+                        "etag": i.get("etag", "")}
         return None
     def upload(self, local_path, key):
         k = self._key(key)
         d = os.path.dirname(k)
-        if d and not self.client.exists(d):
-            self.client.mkdir(d)
-        self.client.upload_file(local_path, k, overwrite=True)
+        if d and not net_retry(lambda: self.client.exists(d), f"探测 {d}"):
+            net_retry(lambda: self.client.mkdir(d), f"建目录 {d}")
+        net_retry(lambda: self.client.upload_file(local_path, k, overwrite=True), f"上传 {k}")
         return self.meta(key)
     def download(self, key, local_path):
-        self.client.download_file(self._key(key), local_path)
+        net_retry(lambda: self.client.download_file(self._key(key), local_path), f"下载 {key}")
         return self.meta(key)
     def list(self, prefix=""):
         k = self._key(prefix)
         try:
-            return [(i["name"], {"size": i.get("size", 0), "mtime": i.get("last_modified", 0), "etag": i.get("etag", "")})
-                    for i in self.client.ls(k, detail=True)]
+            infos = net_retry(lambda: self.client.ls(k, detail=True), f"枚举 {k}")
+        except RuntimeError:
+            raise                       # 重试耗尽不许伪装成「空前缀」
         except Exception:
-            return []
+            return []                   # 404/目录不存在 = 空
+        return [(i["name"], {"size": i.get("size", 0), "mtime": i.get("last_modified", 0), "etag": i.get("etag", "")})
+                for i in infos]
 
 class S3Backend(StorageBackend):
     """S3 兼容后端（boto3：阿里 OSS / 腾讯 COS / Cloudflare R2 / MinIO）"""
@@ -129,23 +200,31 @@ class S3Backend(StorageBackend):
         return f"{self.prefix}/{key}" if self.prefix else key
     def meta(self, key):
         try:
-            r = self.client.head_object(Bucket=self.bucket, Key=self._key(key))
+            r = net_retry(lambda: self.client.head_object(Bucket=self.bucket, Key=self._key(key)),
+                          f"探测 {key}")
             return {"size": r["ContentLength"], "mtime": r["LastModified"].timestamp(), "etag": r.get("ETag", "")}
+        except RuntimeError:
+            raise                       # 重试耗尽：不许伪装成「不存在」
         except Exception:
             return None
     def upload(self, local_path, key):
-        self.client.upload_file(local_path, self.bucket, self._key(key))
+        net_retry(lambda: self.client.upload_file(local_path, self.bucket, self._key(key)),
+                  f"上传 {key}")
         return self.meta(key)
     def download(self, key, local_path):
-        self.client.download_file(self.bucket, self._key(key), local_path)
+        net_retry(lambda: self.client.download_file(self.bucket, self._key(key), local_path),
+                  f"下载 {key}")
         return self.meta(key)
     def list(self, prefix=""):
         try:
-            r = self.client.list_objects_v2(Bucket=self.bucket, Prefix=self._key(prefix))
-            return [(o["Key"], {"size": o["Size"], "mtime": o["LastModified"].timestamp(), "etag": o.get("ETag", "")})
-                    for o in r.get("Contents", [])]
+            r = net_retry(lambda: self.client.list_objects_v2(Bucket=self.bucket, Prefix=self._key(prefix)),
+                          f"枚举 {prefix}")
+        except RuntimeError:
+            raise                       # 重试耗尽不许伪装成「空前缀」
         except Exception:
             return []
+        return [(o["Key"], {"size": o["Size"], "mtime": o["LastModified"].timestamp(), "etag": o.get("ETag", "")})
+                for o in r.get("Contents", [])]
 
 def hashfile(path, chunk=1 << 20):
     h = hashlib.sha256()

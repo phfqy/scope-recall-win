@@ -8,11 +8,20 @@
   V5  C# 括号/方括号/圆括号配平 + namespace 一致
   V6  installer/ 安装器产物存在且有效（app.ico / setup.iss）
   V7  上游口径残留扫描（mutate CLI / create 变更 / deleted 状态 等禁用表述）
+  V8  维护 CLI 参数装配（CLI 调用串收口到 Infrastructure/MaintenanceCli.cs）
+  V9  Python 运行时脚本（remote/ bridge/ installer 发布产物）全部 py_compile 通过
+  V10 第三方 API 签名比对 + 禁误用参数名（webdav4 Client(url= 事故的守门员）
 """
 from __future__ import annotations
 
+import inspect
+import io
+import os
+import py_compile
 import re
 import sys
+import tempfile
+import tokenize
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -149,9 +158,17 @@ for f in (ico, iss, isl):
         fail(f"V6 缺安装器文件 {f.relative_to(ROOT)}")
 if iss.exists():
     iss_text = iss.read_text(encoding="utf-8")
-    for token in ("ScopeRecallWin-Setup-1.3.1", "PrivilegesRequired=lowest"):
-        if token not in iss_text:
-            fail(f"V6 setup.iss 缺少关键配置: {token}")
+    # 不写死版本号：每次发版都要改这里是个维护陷阱（漏改就误报）。
+    # 只校验「有版本号」+「安装包名与 MyAppVersion 一致」+ 免管理员。
+    if not re.search(r'#define\s+MyAppVersion\s+"\d+\.\d+\.\d+"', iss_text):
+        fail("V6 setup.iss 缺 MyAppVersion（应为 x.y.z）")
+    version_match = re.search(r'#define\s+MyAppVersion\s+"([\d.]+)"', iss_text)
+    if version_match:
+        expected = f"ScopeRecallWin-Setup-{version_match.group(1)}"
+        if expected not in iss_text:
+            fail(f"V6 setup.iss 的 OutputBaseFilename 与 MyAppVersion 不一致（应为 {expected}）")
+    if "PrivilegesRequired=lowest" not in iss_text:
+        fail("V6 setup.iss 缺 PrivilegesRequired=lowest（per-user 免管理员安装）")
 ok.append("V6 安装器: app.ico / setup.iss / ChineseSimplified.isl 齐备")
 
 # ---------- V7 上游口径残留 ----------
@@ -194,6 +211,104 @@ for f in sorted(source_files("*.cs")):
             f"否则极易漏 --config/--apply、把记忆库根当共享库根传、或漏掉 attach 的授权参照"
         )
 ok.append("V8 维护 CLI 参数装配: CLI 调用串已全部收口到 Infrastructure/MaintenanceCli.cs")
+
+# ---------- V9 Python 运行时脚本语法门禁 ----------
+# 背景：remote/ 与 bridge/ 曾没有任何门禁覆盖（V1~V8 全盯 C#/XAML/安装器），
+# 于是 webdav4 Client(url=...) 这种「一行跑不通全部」的参数名错误能在仓库里存活、
+# 还随发布产物出厂——CI 全绿而 webdav 后端 100% 不可用。
+# 本项：remote/、bridge/ 及 installer 发布产物里的全部 .py 必须 py_compile 通过；
+# 一个文件都没有 = 门禁形同虚设，同样算失败。
+_py_dirs = [ROOT / "remote", ROOT / "bridge"]
+_pub_run = ROOT / "installer" / "publish" / "run"
+for _extra in ("remote", "bridge"):
+    _d = _pub_run / _extra
+    if _d.is_dir():
+        _py_dirs.append(_d)
+py_files: list[Path] = []
+for _d in _py_dirs:
+    if _d.is_dir():
+        py_files += sorted(p for p in _d.glob("*.py") if p.is_file())
+if not py_files:
+    fail("V9 未找到任何 Python 运行时脚本（remote/ 与 bridge/ 均不在仓库内）——门禁形同虚设")
+else:
+    _bad = 0
+    with tempfile.TemporaryDirectory() as _td:
+        for f in py_files:
+            try:
+                py_compile.compile(str(f), cfile=os.path.join(_td, f.stem + ".pyc"), doraise=True)
+            except py_compile.PyCompileError as e:
+                fail(f"V9 Python 语法错误: {f.relative_to(ROOT)}: {e}")
+                _bad += 1
+    if not _bad:
+        ok.append(f"V9 Python 语法: {len(py_files)} 个运行时脚本全部编译通过")
+
+# ---------- V10 第三方 API 签名比对 + 误用参数名扫描 ----------
+# webdav4.client.Client 的首参是 base_url，没有 url。复制粘贴改坏的后果是
+# 「任何 webdav 调用前即 TypeError」——这类错误只有签名比对能挡住。
+try:
+    from webdav4.client import Client as _WdClient  # pip install webdav4（CI 未装则跳过比对）
+
+    _params = inspect.signature(_WdClient.__init__).parameters
+    if "base_url" not in _params:
+        fail("V10 webdav4.client.Client.__init__ 无 base_url 参数——版本不兼容，"
+             "remote/ 的 WebDAVBackend 构造方式须同步修订")
+    else:
+        ok.append("V10 webdav4 Client.__init__ 签名比对: 含 base_url")
+except ImportError:
+    ok.append("V10 webdav4 未安装，跳过签名比对（静态扫描仍生效）")
+
+# 全仓 Python（含发布产物）禁写 Client(url=...)。注释/文档字符串里的提及不算违规
+# （与 V8 同思路：先掩掉注释与字符串字面量，保留行号，只扫真实代码）。
+_misuse = re.compile(r"Client\s*\(\s*url\s*=")
+
+
+def _mask_strings_comments(text: str) -> str:
+    """把注释与字符串字面量掩成空格，保留行结构（行号不变）。
+
+    Python 3.12+ 的 f-string 按 PEP 701 拆成 FSTRING_START/MIDDLE/END 三个 token，
+    也要一并掩掉，否则告警文案自身会误触门禁。
+    """
+    masked_types = {tokenize.COMMENT, tokenize.STRING}
+    for name in ("FSTRING_START", "FSTRING_MIDDLE", "FSTRING_END"):
+        t = getattr(tokenize, name, None)
+        if t is not None:
+            masked_types.add(t)
+    rows = [list(ln) for ln in text.splitlines()]
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+            if tok.type not in masked_types:
+                continue
+            (sr, sc), (er, ec) = tok.start, tok.end
+            for r in range(sr, er + 1):
+                row = rows[r - 1] if r - 1 < len(rows) else []
+                c0 = sc if r == sr else 0
+                c1 = ec if r == er else len(row)
+                for c in range(c0, min(c1, len(row))):
+                    row[c] = " "
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return text  # 本身就有语法问题 → 原样扫（V9 会另行报错），宁可误报
+    return "\n".join("".join(r) for r in rows)
+
+
+_scan = list(source_files("*.py")) + py_files
+_seen: set[Path] = set()
+_hits = 0
+for f in _scan:
+    if f in _seen:
+        continue
+    _seen.add(f)
+    try:
+        text = f.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        continue
+    masked = _mask_strings_comments(text)
+    for m in _misuse.finditer(masked):
+        line = masked[: m.start()].count("\n") + 1
+        fail(f"V10 {f.relative_to(ROOT)}:{line} Client(url=...) 误用——"
+             f"webdav4 的 Client 首参是 base_url（写 url= 会在调用前抛 TypeError）")
+        _hits += 1
+if not _hits:
+    ok.append(f"V10 误用参数名扫描: {len(_seen)} 个 Python 文件无 Client(url= 形态")
 
 # ---------- 报告 ----------
 print("== 通过项 ==")
