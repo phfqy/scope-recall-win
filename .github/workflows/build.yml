@@ -1,0 +1,96 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        platform: [x64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore scope-recall-win.csproj -p:Platform=${{ matrix.platform }}
+
+      - name: Build (Release)
+        run: dotnet build scope-recall-win.csproj -p:Platform=${{ matrix.platform }} -c Release --no-restore
+
+      - name: Static verification
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pillow
+          python verify_static.py
+
+  package:
+    runs-on: windows-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish unpackaged (framework-dependent, x64)
+        run: >
+          dotnet publish scope-recall-win.csproj -p:Platform=x64 -c Release -r win-x64
+          -p:WindowsAppSDKSelfContained=false
+          -o installer/publish/run
+
+      - name: Copy XAML artifacts (.xbf / .pri not copied by RID publish)
+        shell: pwsh
+        run: |
+          $tfm = "net8.0-windows10.0.19041.0"
+          $src = "bin\x64\Release\$tfm\win-x64"
+          $dst = "installer\publish\run"
+          Copy-Item "$src\*.pri" $dst -Force
+          Get-ChildItem $src -Recurse -Filter *.xbf | ForEach-Object {
+            $rel = $_.FullName.Substring((Resolve-Path $src).Path.Length + 1)
+            $target = Join-Path $dst $rel
+            New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
+            Copy-Item $_.FullName $target -Force
+          }
+          Write-Host ("xbf copied: " + (Get-ChildItem $dst -Recurse -Filter *.xbf).Count)
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build setup exe
+        shell: pwsh
+        run: |
+          $iscc = Get-ChildItem "C:\Program Files (x86)\Inno Setup*" -Recurse -Filter ISCC.exe |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $iscc) { throw "ISCC.exe not found" }
+          & $iscc installer\setup.iss
+
+      - name: Upload setup exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-exe-x64
+          path: installer/out/ScopeRecallWin-Setup-1.1.0.exe
+          if-no-files-found: error

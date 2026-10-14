@@ -1,0 +1,120 @@
+<UserControl
+    x:Class="ScopeRecallWin.Views.UpdateView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
+
+    <ScrollViewer>
+        <StackPanel Padding="26" Spacing="14" MaxWidth="860">
+
+            <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="更新" />
+            <TextBlock Style="{StaticResource PageDescTextStyle}"
+                       Text="管理控制台软件与记忆插件的版本。升级前会自动备份，校验不过就中止，不会破坏已有记忆。" />
+
+            <!-- ============ 控制台软件更新 ============ -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="控制台软件" />
+
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="当前版本" Style="{StaticResource PageDescTextStyle}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" x:Name="TxtCurrentVersion" Text="—"
+                                   Style="{StaticResource MonoTextStyle}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="最新版本" Style="{StaticResource PageDescTextStyle}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="3" x:Name="TxtLatestVersion" Text="—"
+                                   Style="{StaticResource MonoTextStyle}" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <TextBlock x:Name="TxtChannel" Style="{StaticResource PageDescTextStyle}"
+                               Text="尚未检查" TextWrapping="Wrap" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="BtnCheck" Content="检查更新" Click="BtnCheck_Click" />
+                        <Button x:Name="BtnUpgrade" Content="立即升级" IsEnabled="False"
+                                Style="{StaticResource DangerButtonStyle}" Click="BtnUpgrade_Click" />
+                        <Button x:Name="BtnOpenPage" Content="打开下载页" IsEnabled="False"
+                                Click="BtnOpenPage_Click" />
+                    </StackPanel>
+
+                    <ProgressBar x:Name="DownloadProgress" Maximum="1" Visibility="Collapsed" />
+                    <TextBlock x:Name="TxtDownloadState" Style="{StaticResource PageDescTextStyle}"
+                               Visibility="Collapsed" TextWrapping="Wrap" />
+
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="更新日志" />
+                    <ScrollViewer MaxHeight="180">
+                        <TextBlock x:Name="TxtChangelog" TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Text="检查更新后显示最新版发布说明。" />
+                    </ScrollViewer>
+
+                    <TextBlock x:Name="TxtUpdateMode" Style="{StaticResource PageDescTextStyle}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 记忆插件更新（升级链路见插件卡片） ============ -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="记忆插件" />
+
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="已装版本" Style="{StaticResource PageDescTextStyle}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" x:Name="TxtPluginCurrent" Text="—"
+                                   Style="{StaticResource MonoTextStyle}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="上游版本" Style="{StaticResource PageDescTextStyle}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="3" x:Name="TxtPluginLatest" Text="—"
+                                   Style="{StaticResource MonoTextStyle}" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="BtnPluginCheck" Content="检查插件版本" Click="BtnPluginCheck_Click" />
+                        <Button x:Name="BtnOpenPluginRepo" Content="打开项目主页"
+                                Click="BtnOpenPluginRepo_Click" />
+                        <Button x:Name="BtnOpenPluginPypi" Content="PyPI 发布页"
+                                Click="BtnOpenPluginPypi_Click" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="TxtPluginState" Style="{StaticResource PageDescTextStyle}"
+                               Text="点击「检查插件版本」获取上游最新版与各下载通道的延迟。" TextWrapping="Wrap" />
+
+                    <!-- 升级执行区（二次确认 + 六步进度） -->
+                    <StackPanel x:Name="PluginUpgradePanel" Spacing="10" Visibility="Collapsed">
+                        <TextBlock Style="{StaticResource PageDescTextStyle}" TextWrapping="Wrap"
+                                   Text="升级前会自动备份记忆库；过程中会暂停记忆写入（常驻服务），完成后自动校验版本。" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="BtnPluginUpgrade" Content="开始升级插件"
+                                    Style="{StaticResource DangerButtonStyle}"
+                                    IsEnabled="False" Click="BtnPluginUpgrade_Click" />
+                        </StackPanel>
+                        <ListView x:Name="PluginStepList" MaxHeight="180">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontSize="12"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               TextWrapping="Wrap" />
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

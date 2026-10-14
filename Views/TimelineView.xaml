@@ -1,0 +1,68 @@
+<UserControl
+    x:Class="ScopeRecallWin.Views.TimelineView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
+
+    <Grid>
+        <Grid Padding="26" MaxWidth="1100">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="时间线" Style="{StaticResource PageTitleTextStyle}" />
+                    <TextBlock Style="{StaticResource PageDescTextStyle}"
+                               Text="按时间倒序列出记忆库收到的每一条原始记录。「角色」表示这条内容由谁产生：用户＝你输入的话，助手＝AI 的回复，工具＝工具调用与结果。" />
+                </StackPanel>
+                <Button Grid.Column="1" x:Name="BtnRefresh" Content="刷新" Click="BtnRefresh_Click"
+                        VerticalAlignment="Center" />
+            </Grid>
+
+            <Grid Grid.Row="1" Margin="0,12,0,12" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                    <controls:FilterPicker x:Name="PickerRole" ButtonMinWidth="130" />
+                    <controls:FilterPicker x:Name="PickerRange" ButtonMinWidth="130" />
+                </StackPanel>
+                <TextBox Grid.Column="2" x:Name="TxtSearch" PlaceholderText="搜索事件内容" />
+                <Button Grid.Column="3" x:Name="BtnApply" Content="应用" Click="BtnApply_Click" />
+            </Grid>
+
+            <Grid Grid.Row="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" x:Name="TxtTotal" Style="{StaticResource PageDescTextStyle}" Margin="0,0,0,6" />
+                <ListView Grid.Row="1" x:Name="EventList" SelectionMode="None" IsItemClickEnabled="True"
+                          ItemClick="EventList_ItemClick">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Padding="4,6">
+                                <TextBlock Text="{Binding TimeText}" FontSize="11"
+                                           Foreground="{StaticResource MutedTextBrush}" />
+                                <TextBlock Text="{Binding Summary}" FontSize="12.5" TextWrapping="Wrap"
+                                           MaxLines="2" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
+        </Grid>
+
+        <controls:DetailDrawer x:Name="Drawer" />
+    </Grid>
+</UserControl>

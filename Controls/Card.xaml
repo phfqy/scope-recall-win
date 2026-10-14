@@ -1,0 +1,14 @@
+<UserControl
+    x:Class="ScopeRecallWin.Controls.Card"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Name="CardRoot">
+    <!-- 嵌套内容自动落到 UserControl.Content，由 ContentPresenter 呈现 -->
+    <Border Style="{StaticResource CardBorderStyle}">
+        <StackPanel Spacing="12">
+            <TextBlock x:Name="TitleText" Style="{StaticResource SectionHeaderTextStyle}"
+                       Visibility="Collapsed" />
+            <ContentPresenter Content="{Binding Content, ElementName=CardRoot}" />
+        </StackPanel>
+    </Border>
+</UserControl>

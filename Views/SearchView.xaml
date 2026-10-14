@@ -1,0 +1,51 @@
+<UserControl
+    x:Class="ScopeRecallWin.Views.SearchView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ScopeRecallWin.Controls">
+
+    <Grid>
+        <Grid Padding="26" MaxWidth="1000">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0">
+                <TextBlock Text="检索" Style="{StaticResource PageTitleTextStyle}" />
+                <TextBlock Style="{StaticResource PageDescTextStyle}"
+                           Text="词法关键词检索：直接查 lexical_postings 索引，零成本、不调模型。中文按二元切分（输入「部署」可命中含该词的事件）。" />
+            </StackPanel>
+
+            <Grid Grid.Row="1" Margin="0,12,0,8" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" x:Name="TxtKeyword" PlaceholderText="输入关键词（如：部署 / scope-recall / 插件）"
+                         KeyDown="TxtKeyword_KeyDown" />
+                <Button Grid.Column="1" x:Name="BtnSearch" Content="检索" Click="BtnSearch_Click" />
+            </Grid>
+
+            <TextBlock Grid.Row="2" x:Name="TxtResult" Style="{StaticResource PageDescTextStyle}" Margin="0,0,0,6" />
+
+            <ListView Grid.Row="3" x:Name="ResultList" SelectionMode="None" IsItemClickEnabled="True"
+                      ItemClick="ResultList_ItemClick">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Padding="4,6">
+                            <TextBlock Text="{Binding Head}" FontSize="11"
+                                       Foreground="{StaticResource MutedTextBrush}" />
+                            <TextBlock Text="{Binding Summary}" FontSize="12.5" TextWrapping="Wrap"
+                                       MaxLines="3" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+
+        <controls:DetailDrawer x:Name="Drawer" />
+    </Grid>
+</UserControl>

@@ -1,0 +1,19 @@
+<UserControl
+    x:Class="ScopeRecallWin.Controls.FilterPicker"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- 过滤/选择下拉：DropDownButton + MenuFlyout。
+         为什么不用 ComboBox：WinUI 的 ComboBox 下拉浮层会把**当前选中项**对齐到按钮位置，
+         选中非首项时整个浮层上移（用户体验上像是"跳动"）；MenuFlyout 固定从按钮下方展开。 -->
+    <StackPanel Spacing="4">
+        <TextBlock x:Name="LblHeader" FontSize="12" Visibility="Collapsed"
+                   Foreground="{StaticResource MutedTextBrush}" />
+        <DropDownButton x:Name="BtnPicker" HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left" Padding="10,6">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock x:Name="TxtCurrent" FontSize="12.5" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </DropDownButton>
+    </StackPanel>
+</UserControl>
