@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
         ["update"]      = typeof(Views.UpdateView),
         ["install"]     = typeof(Views.InstallView),
         ["shared"]      = typeof(Views.SharedStoreView),
+        ["cloudsync"]   = typeof(Views.CloudSyncView),
         ["settings"]    = typeof(Views.SettingsView),
     };
 
@@ -74,8 +75,9 @@ public sealed partial class MainWindow : Window
         {
             ("update",   "更新", "\uE777", "软件与插件版本"),
             ("install",  "安装", "\uE7B8", "部署目录与首次安装"),
-            ("shared",   "共享存储", "\uE716", "已接入的助手成员管理"),
-            ("settings", "设置", "\uE713", "外观 / 更新 / 开机自启"),
+            ("shared",     "共享存储", "\uE716", "已接入的助手成员管理"),
+            ("cloudsync",  "云同步", "\uE753", "把本机记忆同步到云端供远端助手使用"),
+            ("settings",   "设置", "\uE713", "外观 / 更新 / 开机自启"),
         }),
     };
 
