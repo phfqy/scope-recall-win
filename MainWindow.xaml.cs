@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using ScopeRecallWin.Infrastructure;
+using ScopeRecallWin.Services;
 using Windows.System;
 
 namespace ScopeRecallWin;
@@ -110,6 +111,12 @@ public sealed partial class MainWindow : Window
         App.Trace("MainWindow: before BuildNavigation");
         BuildNavigation();
         App.Trace("MainWindow: after BuildNavigation");
+
+        // 数据读取失败 → 底部错误条显式提示（不再让 UI 静默显示「0 条记录」）
+        if (ServiceLocator.Get<IStorageService>() is StorageService storage)
+        {
+            storage.ReadFailed += OnStorageReadFailed;
+        }
         // 启动页：默认总览；可用环境变量 SR_START_PAGE=<tag> 直达某页（自动化验证/快捷入口）
         var startTag = Environment.GetEnvironmentVariable("SR_START_PAGE");
         if (string.IsNullOrWhiteSpace(startTag) || !Views.ContainsKey(startTag))
@@ -509,9 +516,35 @@ public sealed partial class MainWindow : Window
                     System.IO.Path.Combine(AppContext.BaseDirectory, "view_error.log"),
                     viewType.FullName + "\n" + ex);
             }
-            catch { }
+            catch (Exception logEx)
+            {
+                AppLog.Warn($"MainWindow: 写 view_error.log 失败：{logEx.GetType().Name}: {logEx.Message}");
+            }
         }
     }
+
+    // ---------- 数据读取失败提示条 ----------
+
+    /// <summary>存储层读失败：可能在线程池线程触发，统一排队回 UI 线程再显示。</summary>
+    private void OnStorageReadFailed(object? sender, StorageReadErrorEventArgs e)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(() => ShowReadErrorBar(e));
+            return;
+        }
+        ShowReadErrorBar(e);
+    }
+
+    private void ShowReadErrorBar(StorageReadErrorEventArgs e)
+    {
+        TxtErrorBar.Text = $"数据读取失败（{e.Method}）：{e.Exception.Message}"
+            + $"  ·  {DateTimeOffset.Now:HH:mm}  ·  详情见日志目录 logs\\";
+        ErrorBar.Visibility = Visibility.Visible;
+    }
+
+    private void BtnErrorBarClose_Click(object sender, RoutedEventArgs e)
+        => ErrorBar.Visibility = Visibility.Collapsed;
 
     private void NavigateToTag(string tag)
     {

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using ScopeRecallWin.Infrastructure;
 using System.Net.Http;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -178,7 +179,11 @@ public sealed class UpdateService : IUpdateService
             if (!string.IsNullOrEmpty(expectedSha256)
                 && !string.Equals(actualSha, expectedSha256, StringComparison.OrdinalIgnoreCase))
             {
-                try { File.Delete(target); } catch { }
+                try { File.Delete(target); }
+                catch (Exception ex)
+                {
+                    AppLog.Warn($"UpdateService: 删除校验失败的文件 {target} 失败：{ex.GetType().Name}: {ex.Message}");
+                }
                 return new UpdateDownloadResult(null,
                     $"SHA256 校验失败（期望 {expectedSha256}，实际 {actualSha}）", actualSha);
             }

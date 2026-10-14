@@ -83,6 +83,29 @@
                             Click="BtnGlobalSearch_Click" />
                 </Grid>
             </Border>
+
+            <!-- 数据读取失败提示条：存储层读失败（库损坏/被占/权限不足）时显式报错。
+                 修复前这些失败被 catch{} 吞掉、UI 静默显示「0 条记录」——用户无法区分
+                 「没数据」和「读不了」。现在 StorageService.ReadFailed 事件驱动本条显示。 -->
+            <Border x:Name="ErrorBar" VerticalAlignment="Bottom" Margin="16,0,16,16"
+                    Padding="14,10" CornerRadius="6" Visibility="Collapsed"
+                    Background="{StaticResource Surface2Brush}"
+                    BorderBrush="{StaticResource DangerBrush}" BorderThickness="1">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Grid.Column="0" Glyph="&#xEA39;" FontSize="14" Foreground="{StaticResource DangerBrush}"
+                              VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" x:Name="TxtErrorBar" TextWrapping="Wrap" FontSize="12.5"
+                               VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Content="&#xE711;" FontFamily="Segoe Fluent Icons" FontSize="11"
+                            Background="Transparent" BorderThickness="0" Padding="8,4"
+                            Click="BtnErrorBarClose_Click" />
+                </Grid>
+            </Border>
         </Grid>
 
     </Grid>

@@ -11,6 +11,7 @@
   V8  维护 CLI 参数装配（CLI 调用串收口到 Infrastructure/MaintenanceCli.cs）
   V9  Python 运行时脚本（remote/ bridge/ installer 发布产物）全部 py_compile 通过
   V10 第三方 API 签名比对 + 禁误用参数名（webdav4 Client(url= 事故的守门员）
+  V11 禁空 catch{}（存储层 12 处静默返回空列表事故的守门员；文档注释里的字样豁免）
 """
 from __future__ import annotations
 
@@ -309,6 +310,26 @@ for f in _scan:
         _hits += 1
 if not _hits:
     ok.append(f"V10 误用参数名扫描: {len(_seen)} 个 Python 文件无 Client(url= 形态")
+
+# ---------- V11 禁空 catch{} ----------
+# 背景（评审 P0）：StorageService 曾有 12 处 `catch { } return rows;`——库读失败时
+# 静默返回空列表，UI 显示「0 条记录」，用户无法区分「没数据」和「读不了」。
+# 语义测试（tests/ScopeRecallWin.Tests）管行为，这道门禁管复发：一行正则拦住。
+_empty_catch = re.compile(r"catch\s*\{\s*\}")
+_catch_hits = 0
+for f in sorted(source_files("*.cs")):
+    for n, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        if not _empty_catch.search(line):
+            continue
+        # 豁免：文档注释/XML doc 里描述这个模式本身的字样（如 `<c>catch { } return rows;</c>`）
+        if "///" in line or "<c>" in line or "<!--" in line:
+            continue
+        fail(f"V11 {f.relative_to(ROOT)}:{n} 空 catch{{}} —— 异常不许静默："
+             f"至少 AppLog.Warn(...) 落痕；数据读失败还应触发错误态/事件")
+        _catch_hits += 1
+if not _catch_hits:
+    ok.append("V11 空 catch 扫描: 无（异常均有日志或错误态）")
+
 
 # ---------- 报告 ----------
 print("== 通过项 ==")

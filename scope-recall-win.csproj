@@ -17,8 +17,8 @@
     <AssemblyName>ScopeRecallWin</AssemblyName>
     <!-- 应用图标（exe 图标；多尺寸由 generate_icons.py 生成） -->
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>1.3.10</Version>
-    <InformationalVersion>1.3.10</InformationalVersion>
+    <Version>1.3.11</Version>
+    <InformationalVersion>1.3.11</InformationalVersion>
     <!-- 自定义入口：禁用 XAML 生成的 Main，改由 Program.cs 显式初始化
          Windows App SDK Bootstrap（自动初始化在本机会 fail-fast，见 Program.cs 注释）。 -->
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
@@ -41,6 +41,12 @@
     <!-- 只读 SQLite：读通道（Mode=ReadOnly） -->
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
     <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 测试项目在 tests/ 下，有自己的 csproj；从应用构建的默认编译通配里排除，
+         否则测试源码会被算进应用集（xunit 引用不存在 → 构建失败） -->
+    <Compile Remove="tests/**/*.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using ScopeRecallWin.Infrastructure;
 using ScopeRecallWin.Models;
 
 namespace ScopeRecallWin.Services;
@@ -55,6 +56,21 @@ public interface IStorageService
 /// </summary>
 public sealed class StorageService : IStorageService
 {
+    /// <summary>
+    /// 读取失败事件。历史问题：12 个读方法都是 <c>catch { } return rows;</c>——
+    /// 库文件损坏/被占/权限不足时静默返回空列表，UI 显示「0 条记录」，
+    /// 用户无法区分「没数据」和「读不了」（对一个记忆工具这是致命的误判）。
+    /// 现在：既落盘日志（AppLog），也抛本事件让界面显式报错；仍然 fail-soft
+    /// 返回空列表，不把异常抛给视图层。
+    /// </summary>
+    public event EventHandler<StorageReadErrorEventArgs>? ReadFailed;
+
+    /// <summary>读失败统一收口：日志 + 事件。</summary>
+    private void OnReadFailed(string method, string sqlitePath, Exception ex)
+    {
+        AppLog.Warn($"StorageService.{method} 读取失败（{sqlitePath}）：{ex.GetType().Name}: {ex.Message}");
+        ReadFailed?.Invoke(this, new StorageReadErrorEventArgs(method, sqlitePath, ex));
+    }
     private static SqliteConnection OpenReadOnly(string sqlitePath)
     {
         var connection = new SqliteConnection($"Data Source={sqlitePath};Mode=ReadOnly");
@@ -129,7 +145,11 @@ public sealed class StorageService : IStorageService
                 return null;
             }
             double size = 0;
-            try { size = new FileInfo(sqlitePath).Length; } catch { }
+            try { size = new FileInfo(sqlitePath).Length; }
+            catch (Exception ex)
+            {
+                AppLog.Warn($"StorageService: 读取库文件大小失败（{sqlitePath}）：{ex.GetType().Name}: {ex.Message}");
+            }
             return new OverviewStats(
                 reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3),
                 reader.GetInt64(4), reader.GetInt64(5), reader.GetInt64(6), reader.GetInt64(7),
@@ -298,7 +318,10 @@ public sealed class StorageService : IStorageService
                     reader.IsDBNull(8) ? null : reader.GetInt32(8).ToString()));
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            OnReadFailed(nameof(GetClaimVersionsAsync), sqlitePath, ex);
+        }
         return rows;
     }
 
@@ -327,7 +350,10 @@ public sealed class StorageService : IStorageService
                     S(reader, 3), S(reader, 4), S(reader, 5), S(reader, 6)));
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            OnReadFailed(nameof(GetClaimEvidenceAsync), sqlitePath, ex);
+        }
         return rows;
     }
 
@@ -395,7 +421,10 @@ public sealed class StorageService : IStorageService
                     S(reader, 4), S(reader, 5), S(reader, 6), S(reader, 7), S(reader, 8)));
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            OnReadFailed(nameof(GetEventsAsync), sqlitePath, ex);
+        }
         return (rows, total);
     }
 
@@ -446,7 +475,10 @@ public sealed class StorageService : IStorageService
                     reader.GetInt32(4), S(reader, 5), S(reader, 6)));
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            OnReadFailed(nameof(GetWorkItemsAsync), sqlitePath, ex);
+        }
         return (rows, total);
     }
 
@@ -469,7 +501,10 @@ public sealed class StorageService : IStorageService
                 rows.Add(new WorkErrorRow(S(reader, 0) ?? "", S(reader, 1), S(reader, 2), S(reader, 3)));
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            OnReadFailed(nameof(GetWorkErrorsAsync), sqlitePath, ex);
+        }
         return rows;
     }
 
@@ -519,7 +554,10 @@ public sealed class StorageService : IStorageService
                     S(reader, 3), S(reader, 4), S(reader, 5), reader.GetInt32(6)));
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            OnReadFailed(nameof(GetCandidatesAsync), sqlitePath, ex);
+        }
         return (rows, total);
     }
 
@@ -547,7 +585,10 @@ public sealed class StorageService : IStorageService
                     reader.GetString(0), reader.GetInt32(1), S(reader, 2), S(reader, 3), S(reader, 4)));
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            OnReadFailed(nameof(GetCandidateEvidenceAsync), sqlitePath, ex);
+        }
         return rows;
     }
 
@@ -579,7 +620,10 @@ public sealed class StorageService : IStorageService
                     S(reader, 6)));
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            OnReadFailed(nameof(GetDeletionsAsync), sqlitePath, ex);
+        }
         return rows;
     }
 
@@ -612,7 +656,10 @@ public sealed class StorageService : IStorageService
                     reader.GetString(0), reader.GetInt64(1), reader.GetInt64(2), S(reader, 3)));
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            OnReadFailed(nameof(GetProfileGroupsAsync), sqlitePath, ex);
+        }
         return rows;
     }
 
@@ -645,7 +692,10 @@ public sealed class StorageService : IStorageService
                     S(reader, 4), S(reader, 5), S(reader, 6), S(reader, 7), S(reader, 8)));
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            OnReadFailed(nameof(LexicalSearchAsync), sqlitePath, ex);
+        }
         return rows;
     }
 
@@ -697,7 +747,10 @@ public sealed class StorageService : IStorageService
                 }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            OnReadFailed(nameof(TraceAsync), sqlitePath, ex);
+        }
         return rows;
     }
 
@@ -729,7 +782,10 @@ public sealed class StorageService : IStorageService
                     !reader.IsDBNull(8) && reader.GetInt64(8) != 0));
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            OnReadFailed(nameof(EntitySearchAsync), sqlitePath, ex);
+        }
         return rows;
     }
 
@@ -742,3 +798,6 @@ public sealed class StorageService : IStorageService
     internal static DateTimeOffset? ParseTs(string? text)
         => Helpers.TimestampNormalizer.Parse(text);
 }
+
+/// <summary>读取失败详情（方法名 / 库路径 / 异常），供 <see cref="StorageService.ReadFailed"/> 与测试断言。</summary>
+public sealed record StorageReadErrorEventArgs(string Method, string SqlitePath, Exception Exception);
