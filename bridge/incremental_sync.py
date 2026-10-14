@@ -49,6 +49,28 @@ def record_key(ref: str) -> str:
     return RECORD_PREFIX + hashlib.sha1(ref.encode("utf-8")).hexdigest() + ".json"
 
 
+def _parse_ts_utc(value) -> float:
+    """updated_at（ISO8601 字符串或 epoch 秒）→ UTC epoch 秒；失败返回 0。
+
+    必须按 UTC 解释：time.mktime 按本地时区走，在东八区机器上会把时间戳整体
+    挪早 8 小时，让冲突判断（cloud.updated_ts > prev.remote_ts）错乱。
+    """
+    if isinstance(value, (int, float)):
+        return float(value)
+    s = str(value or "").strip()
+    if not s:
+        return 0.0
+    try:
+        return float(s)
+    except ValueError:
+        pass
+    try:
+        from datetime import datetime, timezone
+        return datetime.strptime(s[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
+    except Exception:
+        return 0.0
+
+
 class StoreReader:
     """真实共享库的只读提取器。任何写操作都会在连接层被 SQLite 拒绝。"""
 
@@ -223,12 +245,67 @@ class IncrementalSyncer:
 
     def _read_cloud_state(self) -> dict:
         raw = self.backend.get_bytes(STATE_KEY)
-        if not raw:
-            return {"schema": SCHEMA_VERSION, "records": {}}
+        if raw:
+            try:
+                cs = json.loads(raw.decode("utf-8"))
+                if isinstance(cs, dict) and isinstance(cs.get("records"), dict):
+                    return cs
+            except Exception:
+                pass
+            print("warning: state.json 损坏，回退到 records/ 扫描重建", file=sys.stderr)
+        else:
+            # 账本缺失（home 端同步中断 / root 配错都会造成）。不回退的代价不是
+            # 「少推几条」：push_records 失去 hash 比对依据会把**全部记录重传一遍**
+            # （数百次 PUT），正好命中坚果云免费版的滥用判定 → 账号级 503 封锁。
+            # 与 remote/sr_cloud_remote.py 的 load_ledger 同款策略：枚举 records/
+            # 重建最小账本；本轮结束 _write_cloud_state 会把修复后的账本写回。
+            scanned = self._scan_record_objects()
+            if scanned:
+                print(f"warning: state.json 缺失，records/ 发现 {len(scanned)} 条记录对象"
+                      f" —— 已回退为直接扫描重建账本（本轮结束会写回修复后的 state.json）",
+                      file=sys.stderr)
+                return {"schema": SCHEMA_VERSION, "records": scanned}
+        return {"schema": SCHEMA_VERSION, "records": {}}
+
+    #: 回退扫描的节流（秒）与上限：批量 GET 同样要限速，否则刚被 503 又被判滥用
+    SCAN_THROTTLE = 0.3
+    SCAN_CAP = 1000
+
+    def _scan_record_objects(self) -> dict:
+        """枚举 records/ 重建最小账本 {ref: meta}（state.json 缺失/损坏时，只读）。
+
+        记录本体的 ref / record_type / canonical_hash / updated_at 已足够支撑
+        push 的 hash 比对与 pull 的新旧判断。一次性成本：本轮写回账本后，
+        后续轮次不再需要扫描。
+        """
         try:
-            return json.loads(raw.decode("utf-8"))
-        except Exception:
-            return {"schema": SCHEMA_VERSION, "records": {}}
+            keys = [k for k, _m in (self.backend.list(RECORD_PREFIX) or []) if k.endswith(".json")]
+        except Exception as e:
+            print(f"warning: 枚举 {RECORD_PREFIX} 失败：{type(e).__name__}: {e}", file=sys.stderr)
+            return {}
+        if len(keys) > self.SCAN_CAP:
+            print(f"warning: records/ 超过 {self.SCAN_CAP} 条，只扫描前 {self.SCAN_CAP} 条",
+                  file=sys.stderr)
+        ledger = {}
+        for key in keys[: self.SCAN_CAP]:
+            raw = self.backend.get_bytes(key)
+            if not raw:
+                continue
+            try:
+                rec = json.loads(raw.decode("utf-8"))
+            except Exception:
+                continue
+            ref = rec.get("ref")
+            if not ref:
+                continue
+            ledger[ref] = {
+                "hash": canonical_hash(rec),
+                "updated_ts": _parse_ts_utc(rec.get("updated_at")),
+                "key": key,
+                "record_type": rec.get("record_type", "claim"),
+            }
+            time.sleep(self.SCAN_THROTTLE)
+        return ledger
 
     def _write_cloud_state(self, cs: dict):
         self.backend.put_bytes(STATE_KEY, json.dumps(cs, ensure_ascii=False).encode("utf-8"))

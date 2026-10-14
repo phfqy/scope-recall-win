@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Scope Recall 记忆工作台">
 
-    <!-- 布局：236px 左导航 + 内容区 + 快速搜索浮层。
+    <!-- 布局：236px 左导航 + 内容区。
          导航用 Grid/StackPanel/Button 自建，而非 NavigationView ——
          WinUI 3 的 NavigationView 在 unpackaged 形态（桌面 exe 安装版，
          WindowsPackageType=None）下只要承载 Content 就 fail-fast（0xC000027B），
@@ -12,7 +12,7 @@
          导航项结构：选中指示条 + 图标 + 主标签 + 副标题（详情摘要）+ 状态角标。 -->
     <Grid x:Name="RootGrid" Background="{StaticResource WindowBackgroundBrush}"
           KeyboardAcceleratorPlacementMode="Hidden">
-        <!-- KeyboardAcceleratorPlacementMode=Hidden：快速搜索（Ctrl+T/Ctrl+K）的快捷键提示气泡
+        <!-- KeyboardAcceleratorPlacementMode=Hidden：Ctrl+F 搜索的快捷键提示气泡
              不再浮在内容上遮挡文字（快捷键功能保留）。 -->
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="236" />
@@ -39,9 +39,7 @@
 
         <!-- 内容区：视图宿主 + 呼出式顶栏搜索。
              搜索栏不再常驻占位：默认收起，Ctrl+F 呼出/收起（Esc 也可收起），
-             逻辑在 MainWindow.AnimateSearchBar；浮层压在内容之上、不挤压布局。
-             注意：Ctrl+T 是「快速搜索」浮层（页面 + 设置项 + 记忆检索，见下方 QuickSearchOverlay），
-             与顶栏这个「只搜记忆」的快捷框不是同一个东西。 -->
+             逻辑在 MainWindow.AnimateSearchBar；浮层压在内容之上、不挤压布局。 -->
         <Grid Grid.Column="1">
             <ContentControl x:Name="ContentHost"
                             HorizontalContentAlignment="Stretch"
@@ -87,46 +85,5 @@
             </Border>
         </Grid>
 
-        <!-- 快速搜索浮层（Acrylic），Ctrl+T / Ctrl+K 唤起：
-             候选 = 全部页面 + 应用内设置项（Infrastructure/QuickSearchCatalog）+ 动态「搜记忆」动作；
-             输入实时过滤，↑↓ 选择，Enter 打开（设置项跳转后聚焦到该项），Esc / 点空白处关闭。 -->
-        <Grid x:Name="QuickSearchOverlay" Grid.ColumnSpan="2" Visibility="Collapsed" Background="#33000000"
-              Tapped="QuickSearchOverlay_Tapped">
-            <Grid MaxWidth="560" VerticalAlignment="Top" Margin="0,80,0,0">
-                <Border Background="{StaticResource AcrylicPanelBrush}" CornerRadius="8"
-                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
-                    <StackPanel>
-                        <TextBox x:Name="QuickSearchInput" PlaceholderText="搜索设置、页面或记忆…（↑↓ 选择，Enter 打开，Esc 关闭）"
-                                 Padding="14,10" Background="Transparent" BorderThickness="0"
-                                 KeyDown="QuickSearchInput_KeyDown" TextChanged="QuickSearchInput_TextChanged" />
-                        <ListView x:Name="QuickSearchList" MaxHeight="320" IsItemClickEnabled="True"
-                                  ItemClick="QuickSearchList_ItemClick" SelectionMode="Single">
-                            <ListView.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Padding="6,7" ColumnSpacing="10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0" Spacing="0">
-                                            <TextBlock Text="{Binding Label}" FontSize="13.5" />
-                                            <TextBlock Text="{Binding Tip}" FontSize="11"
-                                                       Foreground="{StaticResource MutedTextBrush}"
-                                                       TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                        <TextBlock Grid.Column="1" Text="{Binding Kind}" FontSize="10.5"
-                                                   Foreground="{StaticResource MutedTextBrush}"
-                                                   VerticalAlignment="Center" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
-                        <TextBlock x:Name="QuickSearchEmpty" Text="没有匹配的设置或页面——换个词试试"
-                                   Padding="14,10" Foreground="{StaticResource MutedTextBrush}"
-                                   Visibility="Collapsed" />
-                    </StackPanel>
-                </Border>
-            </Grid>
-        </Grid>
     </Grid>
 </Window>

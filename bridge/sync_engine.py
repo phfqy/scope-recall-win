@@ -31,6 +31,32 @@ def _status_of(exc):
     return v if isinstance(v, int) else None
 
 
+def _is_not_found(exc) -> bool:
+    """「对象不存在」判定（各后端形态不同，都必须认出来）。
+
+    - webdav4：**ResourceNotFound**（只有 .path，没有 status_code——这是重点，
+      HTTPError 才有 status_code，404 走的是 ResourceNotFound）
+    - boto3：ClientError Code in ("404", "NoSuchKey", "NotFound")
+    - 本地目录：FileNotFoundError
+
+    把 404 误判成网络错误 → 无谓退避；更严重的是桥的 get_bytes 历史上把所有
+    异常都吞成 None（「不存在」），而云端不可达时返回 None 会让增量引擎以为
+    账本是空的 → **把全部记录重传一遍**（数百次 PUT）→ 正中坚果云滥用判定 → 503。
+    """
+    if isinstance(exc, FileNotFoundError):
+        return True
+    if _status_of(exc) == 404:
+        return True
+    if type(exc).__name__ in ("ResourceNotFound", "NoSuchKey", "NotFound", "NoSuchKeyError"):
+        return True
+    resp = getattr(exc, "response", None)
+    if isinstance(resp, dict):
+        code = (resp.get("Error") or {}).get("Code")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return True
+    return False
+
+
 def _is_retryable(exc) -> bool:
     if isinstance(exc, (socket.timeout, TimeoutError, ConnectionError)):
         return True
@@ -47,33 +73,32 @@ def _is_retryable(exc) -> bool:
 
 
 def net_retry(fn, what, delays=RETRY_DELAYS):
-    """带指数退避的网络调用。404 原样抛出（调用方按「不存在」处理）。"""
+    """带指数退避的网络调用。「不存在」原样抛出（调用方按缺失处理），不重试。"""
     attempts = len(delays) + 1
-    last = None
     for i in range(attempts):
         try:
             return fn()
         except Exception as e:  # noqa: BLE001 —— 网络异常形态太多，统一收敛
-            last = e
-            st = _status_of(e)
-            if st == 404:
+            if _is_not_found(e):
                 raise
-            if st in (401, 403) or not _is_retryable(e) or i == attempts - 1:
+            if i == attempts - 1 or not _is_retryable(e):
+                st = _status_of(e)
                 body = ""
                 text = getattr(getattr(e, "response", None), "text", None)
                 if isinstance(text, str):
                     body = text[:300]
+                retried = f"已退避重试 {i} 次" if i > 0 else "未重试（不可重试的错误类型）"
                 if st == 503 or "BlockedTemporarily" in body or "Too many requests" in body:
                     raise RuntimeError(
                         f"{what}：云端限流（HTTP 503 BlockedTemporarily，坚果云免费版为账号级封锁，"
-                        f"通常持续数分钟）。已退避重试 {len(delays)} 次仍失败——请等待几分钟后重试。")
+                        f"通常持续数分钟）。{retried}仍失败——请等待几分钟后重试。")
                 if st in (401, 403):
                     raise RuntimeError(
                         f"{what}：云端认证失败（HTTP {st}）。坚果云须用应用密码而非登录密码。")
                 raise RuntimeError(
-                    f"{what}：网络错误 {type(e).__name__}: {e}（已退避重试 {len(delays)} 次）")
+                    f"{what}：网络错误 {type(e).__name__}: {e}（{retried}）")
             time.sleep(delays[i])
-    raise RuntimeError(f"{what}：网络错误 {type(last).__name__}: {last}")
+    raise AssertionError("unreachable")  # pragma: no cover
 
 class StorageBackend:
     """云端文件存储抽象：以 'key'（相对路径）为单位"""
@@ -98,7 +123,12 @@ class StorageBackend:
         finally:
             os.remove(p)
     def get_bytes(self, key) -> bytes | None:
-        """读字节内容（云端状态文件用；不存在返回 None）"""
+        """读字节内容（云端状态文件用；**不存在**返回 None）。
+
+        网络类错误（已退避重试仍失败）必须抛出，不能返回 None：
+        调用方（增量引擎的 _read_cloud_state）把 None 当「账本缺失」处理，
+        那会触发全量重传；而真实原因是云端不可达时，正确行为是让本轮同步失败。
+        """
         import tempfile
         fd, p = tempfile.mkstemp(suffix=".tmp")
         os.close(fd)
@@ -106,8 +136,10 @@ class StorageBackend:
             self.download(key, p)
             with open(p, "rb") as f:
                 return f.read()
-        except Exception:
-            return None
+        except Exception as e:
+            if _is_not_found(e):
+                return None
+            raise
         finally:
             if os.path.exists(p):
                 os.remove(p)

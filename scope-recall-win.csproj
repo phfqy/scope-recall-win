@@ -17,8 +17,8 @@
     <AssemblyName>ScopeRecallWin</AssemblyName>
     <!-- 应用图标（exe 图标；多尺寸由 generate_icons.py 生成） -->
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>1.3.8</Version>
-    <InformationalVersion>1.3.8</InformationalVersion>
+    <Version>1.3.9</Version>
+    <InformationalVersion>1.3.9</InformationalVersion>
     <!-- 自定义入口：禁用 XAML 生成的 Main，改由 Program.cs 显式初始化
          Windows App SDK Bootstrap（自动初始化在本机会 fail-fast，见 Program.cs 注释）。 -->
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>

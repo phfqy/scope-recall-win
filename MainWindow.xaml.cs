@@ -92,7 +92,6 @@ public sealed partial class MainWindow : Window
 
     private readonly Dictionary<string, NavButtonParts> _navButtons = new();
     private readonly Dictionary<Type, UIElement> _viewCache = new();
-    private readonly List<QuickSearchItem> _paletteItems = new();
     private NavButtonParts? _activeParts;
 
     public MainWindow()
@@ -111,7 +110,6 @@ public sealed partial class MainWindow : Window
         App.Trace("MainWindow: before BuildNavigation");
         BuildNavigation();
         App.Trace("MainWindow: after BuildNavigation");
-        BuildPaletteItems();
         // 启动页：默认总览；可用环境变量 SR_START_PAGE=<tag> 直达某页（自动化验证/快捷入口）
         var startTag = Environment.GetEnvironmentVariable("SR_START_PAGE");
         if (string.IsNullOrWhiteSpace(startTag) || !Views.ContainsKey(startTag))
@@ -125,16 +123,6 @@ public sealed partial class MainWindow : Window
             SetActive(startParts);
         }
         App.Trace($"MainWindow: after NavigateTo({startTag})");
-
-        // ⌘K / Ctrl+T 键盘加速器：呼出快速搜索浮层（页面 + 设置项 + 记忆检索）
-        var accelerator = new KeyboardAccelerator
-        {
-            Key = VirtualKey.K,
-            Modifiers = VirtualKeyModifiers.Control,
-        };
-        accelerator.Invoked += (_, _) => ToggleQuickSearch();
-        RootGrid.KeyboardAccelerators.Add(accelerator);
-
         // Ctrl+F：呼出顶栏全局搜索框并聚焦（搜索栏默认收起）
         var focusSearch = new KeyboardAccelerator
         {
@@ -147,17 +135,6 @@ public sealed partial class MainWindow : Window
             TxtGlobalSearch.Focus(FocusState.Programmatic);
         };
         RootGrid.KeyboardAccelerators.Add(focusSearch);
-
-        // Ctrl+T：呼出 / 收起快速搜索浮层（呼出时自动聚焦输入框）。
-        // 它与 Ctrl+F 的顶栏搜索框分工不同：这里搜「设置项 / 页面 / 记忆」并给候选，
-        // 顶栏那个只搜记忆（Enter 直排）。
-        var toggleSearch = new KeyboardAccelerator
-        {
-            Key = VirtualKey.T,
-            Modifiers = VirtualKeyModifiers.Control,
-        };
-        toggleSearch.Invoked += (_, _) => ToggleQuickSearch();
-        RootGrid.KeyboardAccelerators.Add(toggleSearch);
 
         // 外观：应用保存的主题设置（含标题栏配色，避免顶栏与内容区色调不一致）
         ThemeService.Apply(App.Settings.Theme);
@@ -546,159 +523,6 @@ public sealed partial class MainWindow : Window
                 SetActive(parts);
             }
         }
-    }
-
-    // ---------- 快速搜索（Ctrl+T / Ctrl+K） ----------
-
-    private void BuildPaletteItems()
-    {
-        // 页面候选：全部导航目标（与左导航同源，不重复维护第二份清单）
-        foreach (var (group, items) in NavGroups)
-        {
-            foreach (var (tag, label, _, tip) in items)
-            {
-                if (Views.ContainsKey(tag))
-                {
-                    _paletteItems.Add(new QuickSearchItem("页面", label, tip, tag, group, null, tag));
-                }
-            }
-        }
-        // 设置项候选：应用内各设置页的可操作项（Infrastructure/QuickSearchCatalog）
-        foreach (var s in QuickSearchCatalog.Settings)
-        {
-            _paletteItems.Add(s);
-        }
-    }
-
-    private void ToggleQuickSearch()
-    {
-        QuickSearchOverlay.Visibility =
-            QuickSearchOverlay.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
-        if (QuickSearchOverlay.Visibility == Visibility.Visible)
-        {
-            QuickSearchInput.Text = "";
-            RefreshQuickSearchList(_paletteItems, query: "");
-            QuickSearchInput.Focus(FocusState.Programmatic);
-        }
-    }
-
-    /// <summary>刷新候选列表；query 非空时在顶部插入「在全部记忆中搜索」动作项。</summary>
-    private void RefreshQuickSearchList(List<QuickSearchItem> items, string query)
-    {
-        var list = new List<QuickSearchItem>(items);
-        if (!string.IsNullOrEmpty(query))
-        {
-            list.Insert(0, new QuickSearchItem(
-                "检索", $"在全部记忆中搜索「{query}」", "词法匹配全部记忆事件",
-                "__memory__", "记忆检索", null, ""));
-        }
-        QuickSearchList.ItemsSource = list;
-        QuickSearchList.SelectedIndex = list.Count > 0 ? 0 : -1;
-        QuickSearchEmpty.Visibility = list.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
-    }
-
-    private void QuickSearchInput_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        var query = (QuickSearchInput.Text ?? "").Trim();
-        if (string.IsNullOrEmpty(query))
-        {
-            RefreshQuickSearchList(_paletteItems, query: "");
-            return;
-        }
-        var matched = _paletteItems.FindAll(p => p.Matches(query));
-        RefreshQuickSearchList(matched, query);
-    }
-
-    private void QuickSearchInput_KeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        switch (e.Key)
-        {
-            case Windows.System.VirtualKey.Down:
-                if (QuickSearchList.SelectedIndex < QuickSearchList.Items.Count - 1)
-                {
-                    QuickSearchList.SelectedIndex++;
-                }
-                e.Handled = true;
-                break;
-            case Windows.System.VirtualKey.Up:
-                if (QuickSearchList.SelectedIndex > 0)
-                {
-                    QuickSearchList.SelectedIndex--;
-                }
-                e.Handled = true;
-                break;
-            case Windows.System.VirtualKey.Enter:
-                ExecuteQuickSearchItem(QuickSearchList.SelectedItem);
-                e.Handled = true;
-                break;
-            case Windows.System.VirtualKey.Escape:
-                QuickSearchOverlay.Visibility = Visibility.Collapsed;
-                e.Handled = true;
-                break;
-        }
-    }
-
-    /// <summary>点浮层空白处（暗背景）关闭；点面板内部不关（OriginalSource 是面板内的元素）。</summary>
-    private void QuickSearchOverlay_Tapped(object sender, TappedRoutedEventArgs e)
-    {
-        // ReferenceEquals：OriginalSource 是 object，与 Grid 的 == 会触发 CS0252 警告，
-        // 而这里要的就是引用相等（点在暗背景上时才关）。
-        if (ReferenceEquals(e.OriginalSource, QuickSearchOverlay))
-        {
-            QuickSearchOverlay.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private void QuickSearchList_ItemClick(object sender, ItemClickEventArgs e)
-        => ExecuteQuickSearchItem(e.ClickedItem);
-
-    /// <summary>执行一条候选：检索动作 → 跑记忆检索；其余 → 跳页，设置项再聚焦到锚点控件。</summary>
-    private void ExecuteQuickSearchItem(object? item)
-    {
-        if (item is not QuickSearchItem qi)
-        {
-            return;
-        }
-        QuickSearchOverlay.Visibility = Visibility.Collapsed;
-
-        if (string.Equals(qi.Tag, "__memory__", StringComparison.Ordinal))
-        {
-            RunGlobalSearch((QuickSearchInput.Text ?? "").Trim());
-            return;
-        }
-
-        NavigateToTag(qi.Tag);
-        if (qi.Anchor is null || !Views.TryGetValue(qi.Tag, out var viewType))
-        {
-            return;
-        }
-        if (_viewCache.TryGetValue(viewType, out var view) && view is FrameworkElement host
-            && host.FindName(qi.Anchor) is UIElement target)
-        {
-            RevealAnchor(target);
-        }
-    }
-
-    /// <summary>
-    /// 把锚点控件带进视野并聚焦：先展开途经的所有 Expander（高级设置默认折叠，
-    /// 锚点在里层时直接滚动会落空），再 StartBringIntoView + 聚焦。
-    /// </summary>
-    private static void RevealAnchor(UIElement target)
-    {
-        DependencyObject? node = target;
-        while (node is not null)
-        {
-            if (node is Expander expander)
-            {
-                expander.IsExpanded = true;
-            }
-            node = VisualTreeHelper.GetParent(node);
-        }
-        if (target is FrameworkElement fe)
-        {
-            fe.StartBringIntoView();
-        }
-        target.Focus(FocusState.Programmatic);
     }
 
     // ---------- 基础设施 ----------

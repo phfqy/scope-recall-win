@@ -71,7 +71,14 @@ public sealed partial class SharedStoreView : UserControl
             return;
         }
 
-        var entries = (await _plugin.ListEntriesAsync(root)).ToList();
+        var allEntries = (await _plugin.ListEntriesAsync(root)).ToList();
+        // 与「助手连接」页同口径：detach 只是解除链接，记忆仍留在库里，但条目不再是
+        // 「已接入的助手」。detach 只在 installation.json 里写 detached_at、不删行，
+        // 所以必须显式过滤——不过滤就会出现「取消链接了控制台还显示已接入」。
+        var entries = allEntries
+            .Where(en => string.IsNullOrEmpty(en.DetachedAt))
+            .ToList();
+        var detachedCount = allEntries.Count - entries.Count;
         EntryList.ItemsSource = entries.Select(en =>
         {
             var name = string.IsNullOrWhiteSpace(en.DisplayName) ? en.Entry : $"{en.DisplayName}（{en.Entry}）";
@@ -91,8 +98,11 @@ public sealed partial class SharedStoreView : UserControl
         }).ToList();
 
         TxtState.Text = entries.Count == 0
-            ? "这个共享库还没有接入任何助手，可在下方接入。"
-            : $"已接入 {entries.Count} 个助手（记忆互通、权限各按原有设置）。";
+            ? (detachedCount > 0
+                ? $"这个共享库没有已接入的助手（{detachedCount} 个已取消链接的条目不再显示，其记忆仍保留在库中）。"
+                : "这个共享库还没有接入任何助手，可在下方接入。")
+            : $"已接入 {entries.Count} 个助手（记忆互通、权限各按原有设置）"
+              + (detachedCount > 0 ? $"；另有 {detachedCount} 个已取消链接的条目不再统计。" : "。");
         TxtState.Foreground = StatusVisuals.BrushOf(entries.Count == 0 ? "pending" : "ok");
     }
 

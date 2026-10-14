@@ -76,6 +76,33 @@ def _status_of(exc):
     return None
 
 
+def _is_not_found(exc) -> bool:
+    """「对象不存在」判定——各后端形态不同，必须都能认出来：
+
+    - requests/httpx：response.status_code == 404
+    - webdav4：**ResourceNotFound**（ClientError 子类，只有 .path，没有 status_code！）
+    - boto3：ClientError["Error"]["Code"] in ("404", "NoSuchKey", "NotFound")
+    - 本地目录：FileNotFoundError
+
+    为什么关键：把 404 误判成网络错误会退避重试若干次（白等），更糟的是
+    SystemExit 会穿透 get_bytes 的 `except Exception`，让「账本缺失」直接杀死命令，
+    而不是走 records/ 回退扫描。
+    """
+    if isinstance(exc, FileNotFoundError):
+        return True
+    if _status_of(exc) == 404:
+        return True
+    name = type(exc).__name__
+    if name in ("ResourceNotFound", "NoSuchKey", "NotFound", "NoSuchKeyError"):
+        return True
+    resp = getattr(exc, "response", None)
+    if isinstance(resp, dict):
+        code = (resp.get("Error") or {}).get("Code")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return True
+    return False
+
+
 def _is_retryable(exc) -> bool:
     """是否值得退避重试：限流/服务端 5xx/连接层抖动算；参数错误、404 不算。"""
     if isinstance(exc, (socket.timeout, TimeoutError, ConnectionError)):
@@ -93,18 +120,23 @@ def _is_retryable(exc) -> bool:
     return _status_of(exc) in RETRY_STATUS_CODES
 
 
-def _friendly_net_error(exc, what):
-    """把网络异常翻译成**可操作**的报错（坚果云 BlockedTemporarily 特别点名）。"""
+def _friendly_net_error(exc, what, tried=1):
+    """把网络异常翻译成**可操作**的报错（坚果云 BlockedTemporarily 特别点名）。
+
+    tried 是真实尝试次数——此前无论是否真退避都写「已重试 5 次」，属于谎报，
+    会把「立即失败的不可重试错误」误导成「等了 46 秒还是失败」。
+    """
     body = ""
     resp = getattr(exc, "response", None)
     text = getattr(resp, "text", None)
     if isinstance(text, str):
         body = text[:500]
     st = _status_of(exc)
+    retried = f"已自动退避重试 {tried - 1} 次" if tried > 1 else "未重试（不可重试的错误类型）"
     if st == 503 or "BlockedTemporarily" in body or "Too many requests" in body:
         return SystemExit(
             f"{what}：云端限流（HTTP 503 BlockedTemporarily）。坚果云免费版是**账号级惩罚性封锁**，"
-            f"根目录列表都会不通，通常持续数分钟。已自动退避重试 {len(RETRY_DELAYS)} 次仍失败——"
+            f"根目录列表都会不通，通常持续数分钟。{retried}仍失败——"
             f"请等待几分钟后重试，并降低频率（批量操作分批、加大 --throttle）。")
     if st in (401, 403):
         return SystemExit(
@@ -112,25 +144,22 @@ def _friendly_net_error(exc, what):
             f"登录密码会 401。")
     return SystemExit(
         f"{what}：网络错误 {type(exc).__name__}: {exc}"
-        f"（已退避重试 {len(RETRY_DELAYS)} 次：{RETRY_DELAYS[0]}s→{RETRY_DELAYS[-1]}s）")
+        f"（{retried}：{RETRY_DELAYS[0]}s→{RETRY_DELAYS[-1]}s 退避序列）")
 
 
 def net_call(fn, what, delays=RETRY_DELAYS):
-    """带指数退避的网络调用。404 原样抛出（调用方按「不存在」处理），不重试。"""
+    """带指数退避的网络调用。「不存在」原样抛出（调用方按缺失处理），不重试。"""
     attempts = len(delays) + 1
-    last = None
     for i in range(attempts):
         try:
             return fn()
         except Exception as e:  # noqa: BLE001 —— 网络层异常形态太多，统一在此收敛
-            last = e
-            st = _status_of(e)
-            if st == 404:
-                raise  # 不存在：交给调用方决定（读=返回 None，列=空前缀）
-            if st in (401, 403) or not _is_retryable(e) or i == attempts - 1:
-                raise _friendly_net_error(e, what)
+            if _is_not_found(e):
+                raise  # 不存在：读=返回 None，列=空前缀，写=允许覆盖
+            if i == attempts - 1 or not _is_retryable(e):
+                raise _friendly_net_error(e, what, tried=i + 1)
             time.sleep(delays[i])
-    raise _friendly_net_error(last, what)  # 理论上到不了，兜底
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 def resolve_throttle(value=None) -> float:
@@ -206,7 +235,10 @@ class WebDAVBackend:
             net_call(lambda: self.client.download_fileobj(self._key(key), buf), f"下载 {key}")
             return buf.getvalue()
         except Exception:
-            return None  # 404/不存在 → 按缺失处理
+            # 只有「不存在」会走到这里（net_call 对网络错误抛的是 SystemExit，
+            # 不是 Exception 子类，不会被吞）——返回 None 让调用方按缺失处理，
+            # 云端不可达时则连本命令一起快速失败，绝不静默冒充空数据。
+            return None
 
     def put_bytes(self, key, data: bytes):
         import io
@@ -334,13 +366,17 @@ def _parse_ts(value) -> float:
         return 0.0
 
 
-def scan_record_objects(backend, throttle=None) -> dict:
+def scan_record_objects(backend, throttle=None, want_bodies=False):
     """枚举 records/ 下的记录对象，重建最小账本 {ref: meta}。
 
     仅在 state.json 缺失/损坏时调用。记录本体的 ref / record_type / canonical_hash
     已足够重建 home 端账本的同构条目（key 即对象路径，updated_ts 取记录 updated_at）。
+    want_bodies=True 时同时返回 {ref: 记录正文}——调用方（sync）随后要把这些记录
+    拉进镜像，复用可避免同一轮里把每条记录 GET 两遍（200 条 ×2 的节奏足以把
+    坚果云免费版打进账号级 503）。
     """
     ledger = {}
+    bodies = {}
     step = resolve_throttle(throttle)
     for key in backend.list_keys(RECORD_PREFIX):
         if not key.endswith(".json"):
@@ -366,10 +402,12 @@ def scan_record_objects(backend, throttle=None) -> dict:
             "key": key,
             "record_type": rec.get("record_type", "claim"),
         }
-    return ledger
+        if want_bodies:
+            bodies[ref] = rec
+    return ledger, bodies
 
 
-def load_ledger(backend, warn=True, throttle=None):
+def load_ledger(backend, warn=True, throttle=None, want_bodies=False):
     """读云端账本。返回 (ledger, info)。
 
     info["source"]:
@@ -383,7 +421,7 @@ def load_ledger(backend, warn=True, throttle=None):
         try:
             cs = json.loads(raw.decode("utf-8"))
             if isinstance(cs, dict) and isinstance(cs.get("records"), dict):
-                return cs, {"source": "state", "objects": len(cs["records"])}
+                return cs, {"source": "state", "objects": len(cs["records"]), "bodies": {}}
             why = "损坏（不是合法账本 JSON）"
         except Exception as e:
             why = f"损坏（{type(e).__name__}）"
@@ -391,14 +429,15 @@ def load_ledger(backend, warn=True, throttle=None):
             print(f"warning: {STATE_KEY} {why}，回退到 {RECORD_PREFIX} 直接扫描", file=sys.stderr)
     else:
         why = "缺失"
-    scanned = scan_record_objects(backend, throttle=throttle)
+    scanned, bodies = scan_record_objects(backend, throttle=throttle, want_bodies=want_bodies)
     if scanned:
         if warn:
             print(f"warning: {STATE_KEY} {why}，但 {RECORD_PREFIX} 发现 {len(scanned)} 条记录对象"
                   f" —— 已回退为直接扫描重建索引（只读安全）；写入请先修复 home 端同步，"
                   f"或显式加 --rebuild-state 用扫描结果重建账本", file=sys.stderr)
-        return {"schema": SCHEMA_VERSION, "records": scanned}, {"source": "scan", "objects": len(scanned)}
-    return {"schema": SCHEMA_VERSION, "records": {}}, {"source": "empty", "objects": 0}
+        return ({"schema": SCHEMA_VERSION, "records": scanned},
+                {"source": "scan", "objects": len(scanned), "bodies": bodies})
+    return {"schema": SCHEMA_VERSION, "records": {}}, {"source": "empty", "objects": 0, "bodies": {}}
 
 
 def read_cloud_state(backend, warn=True):
@@ -451,8 +490,9 @@ def cmd_sync(a):
     backend = make_backend(a.backend, root=a.root, url=a.url, user=a.user, pwd=a.pwd,
                            bucket=a.bucket, endpoint=a.endpoint,
                            access_key=a.access_key, secret_key=a.secret_key)
-    cs, linfo = load_ledger(backend, throttle=getattr(a, "throttle", None))
+    cs, linfo = load_ledger(backend, throttle=getattr(a, "throttle", None), want_bodies=True)
     cloud_records = cs.get("records") or {}
+    scanned_bodies = linfo.get("bodies") or {}
     con = open_mirror(a.db)
     pulled = skipped = bad = 0
     try:
@@ -468,13 +508,17 @@ def cmd_sync(a):
                 time.sleep(resolve_throttle(getattr(a, "throttle", None)))  # 逐条节流防限流
             raw = backend.get_bytes(meta.get("key") or record_key(ref))
             if raw is None:
-                bad += 1
-                continue
-            try:
-                rec = json.loads(raw.decode("utf-8"))
-            except Exception:
-                bad += 1
-                continue
+                # 回退扫描已读过正文：直接复用，别把每条记录在一轮里 GET 两遍
+                rec = scanned_bodies.get(ref)
+                if rec is None:
+                    bad += 1
+                    continue
+            else:
+                try:
+                    rec = json.loads(raw.decode("utf-8"))
+                except Exception:
+                    bad += 1
+                    continue
             if canonical_hash(rec) != meta.get("hash"):
                 bad += 1  # 内容被篡改/截断，宁缺毋滥
                 continue
