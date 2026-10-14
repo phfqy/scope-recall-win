@@ -180,6 +180,13 @@ public static class MaintenanceCli
     public static string FailureText(ProcessResult result)
     {
         var stderr = FirstLine(result.StdErr);
+        // Python 崩溃时 stderr 首行永远是「Traceback (most recent call last):」——
+        // 把它当原因显示给用户等于没显示。真正的原因（异常类型+消息）在最后一行。
+        if (!string.IsNullOrWhiteSpace(stderr)
+            && stderr.StartsWith("Traceback", StringComparison.OrdinalIgnoreCase))
+        {
+            stderr = LastLine(result.StdErr) ?? stderr;
+        }
         if (!string.IsNullOrWhiteSpace(stderr))
         {
             return stderr;
@@ -319,6 +326,25 @@ public static class MaintenanceCli
         }
         var line = text.Split('\n')[0].Trim();
         return line.Length == 0 ? null : line;
+    }
+
+    /// <summary>取多行文本最后一个非空行（Python Traceback 的真正原因在这里）。</summary>
+    private static string? LastLine(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = lines.Length - 1; i >= 0; i--)
+        {
+            var line = lines[i].Trim();
+            if (line.Length > 0)
+            {
+                return line;
+            }
+        }
+        return null;
     }
 
     /// <summary>

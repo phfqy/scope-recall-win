@@ -119,6 +119,25 @@ def main(argv=None):
     ap.add_argument("--sample", type=int, default=SAMPLE_LIMIT)
     args = ap.parse_args(argv)
 
+    try:
+        return _probe(args)
+    except SystemExit as e:
+        # sync_engine 的 net_retry 把「云端限流 / 认证失败」抛成 SystemExit；
+        # 绝不让它以裸 Traceback 结束——C# 只取 stderr 首行，用户看到的就是
+        # 「Traceback (most recent call last):」，等于没看到原因。
+        print(json.dumps({"reachable": False,
+                          "error": str(e) or "探针失败（未给出原因）"},
+                         ensure_ascii=False))
+        return 0
+    except Exception as e:  # noqa: BLE001 —— 探针任何崩溃都要变成可读 JSON
+        # RuntimeError 的消息本身已自明（net_retry 的可操作提示），不再叠类型前缀
+        msg = str(e) or repr(e)
+        text = msg if type(e).__name__ == "RuntimeError" else f"{type(e).__name__}: {msg}"
+        print(json.dumps({"reachable": False, "error": text}, ensure_ascii=False))
+        return 0
+
+
+def _probe(args):
     backend = make_backend(args.backend, root=args.root, url=args.url, user=args.user,
                            pwd=args.pwd, bucket=args.bucket, endpoint=args.endpoint,
                            access_key=args.access_key, secret_key=args.secret_key)

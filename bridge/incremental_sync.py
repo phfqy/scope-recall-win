@@ -268,8 +268,8 @@ class IncrementalSyncer:
         return {"schema": SCHEMA_VERSION, "records": {}}
 
     #: 回退扫描的节流（秒）与上限：批量 GET 同样要限速，否则刚被 503 又被判滥用
-    SCAN_THROTTLE = 0.3
-    SCAN_CAP = 1000
+    SCAN_THROTTLE = 0.5
+    SCAN_CAP = 600
 
     def _scan_record_objects(self) -> dict:
         """枚举 records/ 重建最小账本 {ref: meta}（state.json 缺失/损坏时，只读）。
