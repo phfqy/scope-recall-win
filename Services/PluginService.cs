@@ -544,45 +544,80 @@ public sealed class PluginService : IPluginService
                 ? wheelPath
                 : $"{wheelPath}（目标文件被占用，已改用临时文件继续）");
 
-        // 4) quiesce：停全部 entry 的 resident
-        Report(4, "quiesce", "running", "暂停 resident 服务");
-        var entries = await ListEntriesAsync(root, ct).ConfigureAwait(false);
-        foreach (var entry in entries)
+        // 4) quiesce：resident stop + 全栈清场 + 关掉 5 分钟自启任务
+        // 上游 package-upgrade 会对 venv 内的包文件做 DELETE 锁检查：只要还有一个
+        // python 进程（shared worker / watchdog / mcp / resident）在用 venv，就报
+        // installed_files_locked_or_not_replaceable（exit 3，回执 reason 已实测）。
+        // 单纯 resident stop 不够 —— watchdog 会复活 worker，且 autostart 任务每
+        // 5 分钟重拉整栈。因此：先关自启，再按类清场，确认清零后升级；结束恢复自启。
+        Report(4, "quiesce", "running", "停止 resident / worker / watchdog 并关闭自启");
+        var autostartPath = Path.Combine(PathDiscovery.SharedDir(root), "runtime-autostart.json");
+        var autostartWasEnabled = SetAutostartEnabled(autostartPath, enabled: false);
+        string? quiesceError;
+        try
         {
-            if (string.Equals(entry.Host, "hermes", StringComparison.OrdinalIgnoreCase))
+            var entries = await ListEntriesAsync(root, ct).ConfigureAwait(false);
+            foreach (var entry in entries)
             {
-                // hermes 走进程内导入，无 resident 子进程
-                continue;
+                if (string.Equals(entry.Host, "hermes", StringComparison.OrdinalIgnoreCase))
+                {
+                    // hermes 走进程内导入，无 resident 子进程
+                    continue;
+                }
+                var stop = await ProcessRunner.RunAsync(
+                    venvPython,
+                    MaintenanceCli.ResidentStopArgs(entry.Home, entry.Host),
+                    timeoutMs: 60_000, cancellationToken: ct).ConfigureAwait(false);
+                log.Add($"[quiesce] resident stop {entry.Entry}({entry.Host}) exit={stop.ExitCode}");
             }
-            var stop = await ProcessRunner.RunAsync(
-                venvPython,
-                MaintenanceCli.ResidentStopArgs(entry.Home, entry.Host),
-                timeoutMs: 60_000, cancellationToken: ct).ConfigureAwait(false);
-            log.Add($"[quiesce] resident stop {entry.Entry}({entry.Host}) exit={stop.ExitCode}");
-        }
-        Report(4, "quiesce", "done", $"{entries.Count} 个 entry 已处理");
 
-        // 5) install：package-upgrade 离线换包
-        Report(5, "install", "running", "package-upgrade 换包");
-        var uvPath = ExternalUvPath;
-        if (uvPath is null)
-        {
-            Report(5, "install", "failed", "未找到外部 uv 可执行文件");
-            return new PluginUpgradeResult(false, from, null, log,
-                "缺少外部 uv（package-upgrade 需要），请先安装 uv 后重试。已停的服务保持停止、备份保留。");
+            quiesceError = await QuiesceRuntimeProcessesAsync(venvRoot: Path.GetDirectoryName(Path.GetDirectoryName(venvPython)) ?? "", ct)
+                .ConfigureAwait(false);
+            if (quiesceError is not null)
+            {
+                Report(4, "quiesce", "failed", quiesceError);
+                SetAutostartEnabled(autostartPath, autostartWasEnabled);
+                return new PluginUpgradeResult(false, from, null, log, quiesceError);
+            }
+            Report(4, "quiesce", "done", "运行栈已清空（含 watchdog / worker / mcp / resident）");
         }
-        var pkgBackup = Path.Combine(workDir, $"pkg-backup-{stamp}");
-        var upgrade = await ProcessRunner.RunAsync(
-            venvPython,
-            MaintenanceCli.PackageUpgradeArgs(venvPython, wheelPath, pkgBackup, uvPath, sourceQuiesced: true),
-            timeoutMs: 1_800_000, cancellationToken: ct).ConfigureAwait(false);
-        if (!upgrade.Success)
+        catch
         {
-            Report(5, "install", "failed", MaintenanceCli.FailureText(upgrade));
-            return new PluginUpgradeResult(false, from, null, log,
-                $"换包失败（未自动回滚）：{MaintenanceCli.FailureText(upgrade)}。备份保留于 {pkgBackup}。");
+            SetAutostartEnabled(autostartPath, autostartWasEnabled);
+            throw;
         }
-        Report(5, "install", "done", pkgBackup);
+
+        bool upgradeOk;
+        try
+        {
+            // 5) install：package-upgrade 离线换包
+            Report(5, "install", "running", "package-upgrade 换包");
+            var uvPath = ExternalUvPath;
+            if (uvPath is null)
+            {
+                Report(5, "install", "failed", "未找到外部 uv 可执行文件");
+                return new PluginUpgradeResult(false, from, null, log,
+                    "缺少外部 uv（package-upgrade 需要），请先安装 uv 后重试。已停的服务保持停止、备份保留。");
+            }
+            var pkgBackup = Path.Combine(workDir, $"pkg-backup-{stamp}");
+            var upgrade = await ProcessRunner.RunAsync(
+                venvPython,
+                MaintenanceCli.PackageUpgradeArgs(venvPython, wheelPath, pkgBackup, uvPath, sourceQuiesced: true),
+                timeoutMs: 1_800_000, cancellationToken: ct).ConfigureAwait(false);
+            upgradeOk = upgrade.Success;
+            if (!upgrade.Success)
+            {
+                Report(5, "install", "failed", MaintenanceCli.FailureText(upgrade));
+                return new PluginUpgradeResult(false, from, null, log,
+                    $"换包失败（未自动回滚）：{MaintenanceCli.FailureText(upgrade)}。备份保留于 {pkgBackup}。");
+            }
+            Report(5, "install", "done", pkgBackup);
+        }
+        finally
+        {
+            // 自启任务恢复（每 5 分钟一次的那份）：新版本的运行栈会被它自动拉起
+            SetAutostartEnabled(autostartPath, true);
+        }
 
         // 6) verify：版本 + doctor
         Report(6, "verify", "running", "doctor 校验");
@@ -604,6 +639,132 @@ public sealed class PluginService : IPluginService
 
     // ---------- 内部 ----------
 
+    /// <summary>
+    /// 停掉 shared venv 里所有 scope-recall 运行进程（watchdog → bootstrap → lance/http worker →
+    /// mcp → resident，这个顺序保证 watchdog 不会复活 worker），轮询到清零或超时。
+    /// 返回 null 表示清场成功；否则返回带剩余进程数的错误消息。
+    /// </summary>
+    private static async Task<string?> QuiesceRuntimeProcessesAsync(string venvRoot, CancellationToken ct)
+    {
+        var root = Path.GetFullPath(venvRoot).TrimEnd('\\');
+        for (var round = 1; round <= 4; round++)
+        {
+            var victims = EnumerateScopeRecallProcesses(root);
+            if (victims.Count == 0)
+            {
+                await Task.Delay(1500, ct).ConfigureAwait(false); // 再等一拍确认没有复活
+                victims = EnumerateScopeRecallProcesses(root);
+                if (victims.Count == 0)
+                {
+                    return null;
+                }
+            }
+            foreach (var (pid, kind) in victims)
+            {
+                try
+                {
+                    using var proc = System.Diagnostics.Process.GetProcessById(pid);
+                    proc.Kill(entireProcessTree: false);
+                }
+                catch
+                {
+                    // 已退出/已无权限：下一轮复查
+                }
+            }
+            await Task.Delay(2500, ct).ConfigureAwait(false);
+        }
+        var left = EnumerateScopeRecallProcesses(root);
+        return left.Count == 0
+            ? null
+            : $"仍有 {left.Count} 个运行进程无法停止（{string.Join(", ", left.Take(3).Select(v => $"pid={v.Pid} {v.Kind}"))}），" +
+              "请手动结束这些 python 进程后再升级。";
+    }
+
+    /// <summary>枚举命令行指向 shared venv 的 python 进程，按「该先死」的顺序返回。</summary>
+    private static List<(int Pid, string Kind)> EnumerateScopeRecallProcesses(string venvRoot)
+    {
+        var order = new (string Marker, string Kind)[]
+        {
+            ("worker_watchdog", "watchdog"),
+            ("_worker_bootstrap", "bootstrap"),
+            ("_lance_worker", "lance-worker"),
+            ("_http_worker", "http-worker"),
+            ("mcp_entry", "mcp"),
+            ("resident_entry", "resident"),
+        };
+        var found = new List<(int Pid, string Kind)>();
+        try
+        {
+            using var searcher = new System.Management.ManagementObjectSearcher(
+                "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='python.exe' OR Name='pythonw.exe'");
+            foreach (var obj in searcher.Get())
+            {
+                var commandLine = obj["CommandLine"] as string;
+                if (string.IsNullOrEmpty(commandLine) ||
+                    commandLine.Replace('/', '\\').IndexOf(venvRoot, StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    continue;
+                }
+                if (!commandLine.Contains("scope_recall", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                var kind = "other";
+                foreach (var (marker, name) in order)
+                {
+                    if (commandLine.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                    {
+                        kind = name;
+                        break;
+                    }
+                }
+                if (int.TryParse(obj["ProcessId"]?.ToString(), out var pid))
+                {
+                    found.Add((pid, kind));
+                }
+            }
+        }
+        catch
+        {
+            // WMI 不可用时返回已收集的部分（外层会报告剩余数）
+        }
+        return found.OrderBy(v => Array.FindIndex(order, o => o.Kind == v.Kind)).ToList();
+    }
+
+    /// <summary>
+    /// 翻转 shared\runtime-autostart.json 的 enabled 开关（自启任务每 5 分钟重拉运行栈，
+    /// 升级窗口内必须关掉，结束后恢复）。返回翻转前的原值。
+    /// </summary>
+    private static bool SetAutostartEnabled(string autostartPath, bool enabled)
+    {
+        try
+        {
+            if (!File.Exists(autostartPath))
+            {
+                return false;
+            }
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(autostartPath));
+            var original = doc.RootElement.TryGetProperty("enabled", out var flag) && flag.ValueKind == System.Text.Json.JsonValueKind.True;
+            if (original == enabled)
+            {
+                return original;
+            }
+            var buffer = new System.Text.Json.Nodes.JsonObject();
+            foreach (var property in doc.RootElement.EnumerateObject())
+            {
+                buffer[property.Name] = System.Text.Json.Nodes.JsonNode.Parse(property.Value.GetRawText());
+            }
+            buffer["enabled"] = enabled;
+            File.WriteAllText(autostartPath, buffer.ToJsonString());
+            return original;
+        }
+        catch
+        {
+            // 读改失败时不阻塞升级：宁可让 package-upgrade 用 _LOCKED 失败重试
+            return enabled;
+        }
+    }
+
     /// <summary>外部 uv 绝对路径（package-upgrade 要求原生可执行文件）。</summary>
     private static string? ExternalUvPath
     {
@@ -614,10 +775,16 @@ public sealed class PluginService : IPluginService
                 var where = ProcessRunner.RunAsync("where.exe", "uv", timeoutMs: 5_000).GetAwaiter().GetResult();
                 if (where.Success)
                 {
-                    var first = where.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                    if (first.Length > 0 && File.Exists(first[0].Trim()))
+                    // 上游 safe_path 拒绝符号链接/junction（含祖先目录），实测
+                    // %LOCALAPPDATA%\hermes\bin\uv.exe 就因祖先目录是链接被拒 → exit 3。
+                    // 逐个候选挑一个「自身与祖先都不是 reparse 点」的真实文件。
+                    foreach (var raw in where.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries))
                     {
-                        return first[0].Trim();
+                        var candidate = raw.Trim();
+                        if (candidate.Length > 0 && File.Exists(candidate) && !HasReparseAncestor(candidate))
+                        {
+                            return candidate;
+                        }
                     }
                 }
             }
@@ -627,6 +794,28 @@ public sealed class PluginService : IPluginService
             }
             return null;
         }
+    }
+
+    /// <summary>路径自身或任一祖先目录是否为符号链接/junction（上游 safe_path 会拒绝这类路径）。</summary>
+    private static bool HasReparseAncestor(string path)
+    {
+        try
+        {
+            var current = new DirectoryInfo(Path.GetFullPath(path));
+            while (current is not null)
+            {
+                if (current.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                {
+                    return true;
+                }
+                current = current.Parent;
+            }
+        }
+        catch
+        {
+            return true; // 拿不到属性就当作不可靠，交给下一个候选
+        }
+        return false;
     }
 
     private async Task<string?> InstalledVersionAsync(string venvPython, CancellationToken ct)
