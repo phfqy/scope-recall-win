@@ -54,3 +54,6 @@ $RECYCLE.BIN/
 
 ## 安装包输出（本机构建产物，不进 git）
 installer/out/
+
+## 发布产物（installer/publish/run 是打包好的应用二进制，不入库）
+installer/publish/run/
