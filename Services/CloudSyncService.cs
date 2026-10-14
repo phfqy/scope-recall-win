@@ -65,6 +65,8 @@ public sealed record CloudSyncConfig(
 /// </remarks>
 public interface ICloudSyncService
 {
+    /// <summary>远端 agent 链接状态（读云端账本聚合 origin_agent；只读，不碰共享库）。</summary>
+    Task<RemoteLinkStatus?> GetRemoteLinkStatusAsync(string memoryRoot, CancellationToken ct = default);
     /// <summary>读取当前配置。</summary>
     CloudSyncConfig GetConfig();
 
@@ -95,6 +97,49 @@ public interface ICloudSyncService
 
 /// <summary>云桥成员接入结果。</summary>
 public sealed record CloudEntryResult(bool Attached, bool AlreadyPresent, string Message, string? RawOutput);
+
+/// <summary>云端账本里识别到的一个远端写入者（按 origin_agent 聚合；home 主桥的记录无该字段）。</summary>
+public sealed record RemoteLinkWriter(
+    string Agent, int Records, int Claims, int Events, double LastUpdateTs, string? LastUpdateIso);
+
+/// <summary>
+/// 远端 agent 链接状态：读云端账本（state.json + 最近记录抽样）聚合 origin_agent 得出。
+/// 与远端 CLI sr_cloud_remote.py（SKILL sr-cloud-memory）共用同一账本 —— 远端 propose
+/// 打 origin_agent 标记，控制台据此显示「谁在连、最近何时、贡献了多少」。
+/// </summary>
+public sealed record RemoteLinkStatus(
+    bool Reachable,
+    string? Error,
+    int TotalRecords,
+    int Claims,
+    int Events,
+    bool Sampled,
+    int SampleSize,
+    string? LastUpdateIso,
+    IReadOnlyList<RemoteLinkWriter> Writers,
+    CloudSyncRound? LastRound)
+{
+    /// <summary>最近一次云端更新距现在多久（人话；账本为空返回 null）。</summary>
+    public string? LastUpdateHuman
+    {
+        get
+        {
+            if (LastUpdateIso is null)
+            {
+                return null;
+            }
+            if (!DateTimeOffset.TryParse(LastUpdateIso, out var ts))
+            {
+                return LastUpdateIso;
+            }
+            var span = DateTimeOffset.Now - ts;
+            return span.TotalMinutes < 1 ? "刚刚"
+                : span.TotalHours < 1 ? $"{(int)span.TotalMinutes} 分钟前"
+                : span.TotalDays < 1 ? $"{(int)span.TotalHours} 小时前"
+                : $"{(int)span.TotalDays} 天前";
+        }
+    }
+}
 
 /// <summary>环境自检结果。</summary>
 public sealed record CloudSyncPreflight(
@@ -493,6 +538,113 @@ public sealed partial class CloudSyncService : ICloudSyncService
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "ScopeRecallWin", "cloudsync-status.json");
+
+    /// <summary>
+    /// 远端 agent 链接状态：调用桥目录里的 remote_status.py（只读探针，与桥共用后端与凭据环境），
+    /// 读云端账本并按 origin_agent 聚合。探针用**专用 venv** 解释器（有 webdav4/boto3）。
+    /// </summary>
+    public async Task<RemoteLinkStatus?> GetRemoteLinkStatusAsync(string memoryRoot, CancellationToken ct = default)
+    {
+        var bridgeScript = ResolveBridgeScript();
+        var bridgeDir = bridgeScript is null ? null : Path.GetDirectoryName(bridgeScript);
+        var probe = bridgeDir is null ? null : Path.Combine(bridgeDir, "remote_status.py");
+        if (probe is null || !File.Exists(probe))
+        {
+            return new RemoteLinkStatus(false, "未找到探针脚本 remote_status.py（应随应用分发在 bridge\\ 目录）。",
+                0, 0, 0, false, 0, null, Array.Empty<RemoteLinkWriter>(), ReadLastStatus(memoryRoot));
+        }
+        var python = DedicatedVenvPython;
+        if (!File.Exists(python))
+        {
+            return new RemoteLinkStatus(false, "未找到专用 venv 解释器（远端探针需要 webdav4/boto3）。",
+                0, 0, 0, false, 0, null, Array.Empty<RemoteLinkWriter>(), ReadLastStatus(memoryRoot));
+        }
+
+        var config = GetConfig();
+        var parts = new List<string>
+        {
+            Quote(probe),
+            "--backend", config.Backend,
+            "--sample", "60",
+        };
+        if (!string.IsNullOrWhiteSpace(config.Root))
+        {
+            parts.Add("--root"); parts.Add(Quote(config.Root));
+        }
+        if (string.Equals(config.Backend, "webdav", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrWhiteSpace(config.Url)) { parts.Add("--url"); parts.Add(Quote(config.Url)); }
+            if (!string.IsNullOrWhiteSpace(config.User)) { parts.Add("--user"); parts.Add(Quote(config.User)); }
+        }
+        else if (string.Equals(config.Backend, "s3", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrWhiteSpace(config.Bucket)) { parts.Add("--bucket"); parts.Add(Quote(config.Bucket)); }
+            if (!string.IsNullOrWhiteSpace(config.Endpoint)) { parts.Add("--endpoint"); parts.Add(Quote(config.Endpoint)); }
+        }
+
+        var env = await BuildSecretEnvironmentAsync(config).ConfigureAwait(false);
+        var previous = new Dictionary<string, string?>();
+        foreach (var (key, value) in env)
+        {
+            previous[key] = Environment.GetEnvironmentVariable(key);
+            Environment.SetEnvironmentVariable(key, value);
+        }
+
+        try
+        {
+            var result = await ProcessRunner.RunAsync(
+                python, string.Join(' ', parts), workingDirectory: bridgeDir,
+                timeoutMs: 180_000, cancellationToken: ct).ConfigureAwait(false);
+            var stdout = (result.StdOut ?? "").Trim();
+            if (!stdout.StartsWith('{'))
+            {
+                return new RemoteLinkStatus(false,
+                    MaintenanceCli.FailureText(result),
+                    0, 0, 0, false, 0, null, Array.Empty<RemoteLinkWriter>(), ReadLastStatus(memoryRoot));
+            }
+            using var doc = System.Text.Json.JsonDocument.Parse(stdout);
+            var e = doc.RootElement;
+
+            var writers = new List<RemoteLinkWriter>();
+            if (e.TryGetProperty("writers", out var arr) && arr.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var w in arr.EnumerateArray())
+                {
+                    writers.Add(new RemoteLinkWriter(
+                        Str(w, "agent") ?? "unknown",
+                        Int(w, "records"),
+                        Int(w, "claims"),
+                        Int(w, "events"),
+                        Double(w, "last_ts"),
+                        Str(w, "last_iso")));
+                }
+            }
+            var status = new RemoteLinkStatus(
+                Str(e, "reachable") == "True" || (e.TryGetProperty("reachable", out var reach) && reach.ValueKind == System.Text.Json.JsonValueKind.True),
+                Str(e, "error"),
+                Int(e, "total_records"),
+                Int(e, "claims"),
+                Int(e, "events"),
+                Str(e, "sampled") == "True",
+                Int(e, "sample_size"),
+                Str(e, "last_update_iso"),
+                writers,
+                ReadLastStatus(memoryRoot));
+            return status;
+        }
+        catch (Exception ex)
+        {
+            return new RemoteLinkStatus(false, $"{ex.GetType().Name}: {ex.Message}",
+                0, 0, 0, false, 0, null, Array.Empty<RemoteLinkWriter>(), ReadLastStatus(memoryRoot));
+        }
+        finally
+        {
+            foreach (var (key, value) in previous)
+            {
+                Environment.SetEnvironmentVariable(key, value);
+            }
+        }
+    }
 
     /// <summary>
     /// 组装子进程需要的云端凭据环境变量。

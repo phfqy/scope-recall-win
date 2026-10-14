@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """memory_mcp.py — Agent 端记忆 MCP Server。
 
+⚠️ 本文件已过时（Notion 交付包版本），**不要再用**：
+  它写的是「整文件 LWW」的云端对象（memory.sqlite3 + memory.jsonl），与本机增量桥的
+  云端账本（state.json + records/<sha1(ref)>.json）不是同一批对象。用它写入后，
+  控制台的「远端 agent 链接状态」看不见（该探针按 origin_agent 扫账本），home 桥也拉不到。
+  请改用 **remote/memory_mcp.py**（与 sr_cloud_remote.py 同源，读写同一份账本）。
+  本文件保留仅为对照交付包原实现。
+
 模拟 scope-recall 的 Codex 记忆接口（工具名/语义对齐），但数据源是"云端镜像记忆文件"：
 远端 Agent 通过 MCP（stdio）读写云端记忆；每次写入后自动同步上传，也可手动 sync 拉取云端新记忆。
 

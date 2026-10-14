@@ -184,6 +184,7 @@ def run_round(a, syncer, reader, writer, dedup, status_path):
         "round_started": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "pushed": 0, "pulled": 0, "written_to_store": 0,
         "unchanged": 0, "conflicts": 0, "skipped_duplicates": 0,
+        "skipped_superseded": 0,
         "errors": [],
     }
 
@@ -216,6 +217,10 @@ def run_round(a, syncer, reader, writer, dedup, status_path):
         pulled = syncer.pull_records()
         result["pulled"] = len(pulled)
         for rec in pulled:
+            # 远端 agent forget 过的记录：已置 superseded/suppressed，不再转写进共享库
+            if rec.get("suppressed") or rec.get("state") == "superseded":
+                result["skipped_superseded"] += 1
+                continue
             content = content_for_record(rec)
             if not content:
                 continue
